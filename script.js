@@ -78,7 +78,13 @@ function main() {
       var result = dispatchStage_(ctx);
       finishRun_(ctx, result.status, result.message);
       if (ctx.stage === 'LOCKED' || result.status !== 'DONE') break;
-      var state = readState_(sheets.runState);
+      var state;
+      try {
+        state = readState_(sheets.runState);
+      } catch (stateErr) {
+        Logger.log('Post-stage state read failed after ' + ctx.stage + ': ' + String(stateErr));
+        break;
+      }
       if (!state.stage) break;
       if (state.stage === 'COMPLETE') break;
       ctx = startNextStageInSameRun_(ctx, state.stage);
@@ -790,11 +796,14 @@ function stagePublishProducts_(ctx) {
     } catch (stateErr) {
       Logger.log('Publish recovery state update skipped: ' + String(stateErr));
     }
+    var recoveryAdvanced = true;
     try {
       advanceStage_(ctx, 'PRODUCT_DIAGNOSTICS_BUILD');
     } catch (advanceErr) {
+      recoveryAdvanced = false;
       Logger.log('Publish recovery stage advance skipped: ' + String(advanceErr));
     }
+    if (!recoveryAdvanced) return { status: 'PARTIAL', message: 'Products publish already completed. Stage advance deferred after Sheets timeout. Rows=' + draftRows };
     return { status: 'DONE', message: 'Products publish already completed before previous logging failure. Rows=' + draftRows };
   }
   if (written === 0) {
@@ -820,40 +829,52 @@ function stagePublishProducts_(ctx) {
   logProgress_(ctx, 'PUBLISH_PRODUCTS', 'CHECKPOINT', 'Publish work copied. Swapping Products sheet. Rows=' + written);
   swapPublishedProductsSheet_(ctx);
   Logger.log('[PUBLISH_PRODUCTS] Products sheet swapped. Updating final publish state.');
-  ctx.sheets.products = ctx.ss.getSheetByName(PRODUCTS_SHEET);
-  ensureProductsFirst_(ctx.ss, ctx.sheets.products);
+  try {
+    ctx.sheets.products = ctx.ss.getSheetByName(PRODUCTS_SHEET);
+    if (ctx.sheets.products) ensureProductsFirst_(ctx.ss, ctx.sheets.products);
+  } catch (sheetErr) {
+    Logger.log('Products sheet post-swap refresh skipped: ' + String(sheetErr));
+  }
   try {
     setStateValues_(ctx.sheets.runState, { last_successful_publish_at: iso_(new Date()) });
   } catch (stateErr) {
     Logger.log('Publish final timestamp update skipped after successful sheet swap: ' + String(stateErr));
   }
+  var finalAdvanceDone = true;
   try {
     advanceStage_(ctx, 'PRODUCT_DIAGNOSTICS_BUILD');
   } catch (advanceErr) {
+    finalAdvanceDone = false;
     Logger.log('Publish final stage advance skipped after successful sheet swap: ' + String(advanceErr));
   }
+  if (!finalAdvanceDone) return { status: 'PARTIAL', message: 'Products published. Stage advance deferred after Sheets timeout. Rows=' + draftRows };
   return { status: 'DONE', message: 'Products published. Rows=' + draftRows };
 }
 
 
 function productsSheetLooksPublished_(productsSheet, draftSheet, rowCount, colCount) {
-  if (!productsSheet || !draftSheet) return false;
-  if (rowCount < 0 || colCount < 1) return false;
-  if (productsSheet.getLastColumn() < colCount || draftSheet.getLastColumn() < colCount) return false;
-  if (!sameRowValues_(productsSheet.getRange(1, 1, 1, colCount).getValues()[0], draftSheet.getRange(1, 1, 1, colCount).getValues()[0])) return false;
-  if (rowCount === 0) return true;
-  var rowsToCheck = [2, rowCount + 1];
-  if (rowCount > 2) rowsToCheck.push(Math.floor(rowCount / 2) + 1);
-  var seen = {};
-  for (var i = 0; i < rowsToCheck.length; i++) {
-    var row = rowsToCheck[i];
-    if (seen[row]) continue;
-    seen[row] = true;
-    var productRow = productsSheet.getRange(row, 1, 1, colCount).getValues()[0];
-    var draftRow = draftSheet.getRange(row, 1, 1, colCount).getValues()[0];
-    if (!sameRowValues_(productRow, draftRow)) return false;
+  try {
+    if (!productsSheet || !draftSheet) return false;
+    if (rowCount < 0 || colCount < 1) return false;
+    if (productsSheet.getLastColumn() < colCount || draftSheet.getLastColumn() < colCount) return false;
+    if (!sameRowValues_(productsSheet.getRange(1, 1, 1, colCount).getValues()[0], draftSheet.getRange(1, 1, 1, colCount).getValues()[0])) return false;
+    if (rowCount === 0) return true;
+    var rowsToCheck = [2, rowCount + 1];
+    if (rowCount > 2) rowsToCheck.push(Math.floor(rowCount / 2) + 1);
+    var seen = {};
+    for (var i = 0; i < rowsToCheck.length; i++) {
+      var row = rowsToCheck[i];
+      if (seen[row]) continue;
+      seen[row] = true;
+      var productRow = productsSheet.getRange(row, 1, 1, colCount).getValues()[0];
+      var draftRow = draftSheet.getRange(row, 1, 1, colCount).getValues()[0];
+      if (!sameRowValues_(productRow, draftRow)) return false;
+    }
+    return true;
+  } catch (e) {
+    Logger.log('Published Products verification skipped: ' + String(e));
+    return false;
   }
-  return true;
 }
 
 
