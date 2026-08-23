@@ -212,16 +212,6 @@ function ensureSettingsTemplate_(sheet) {
     ['products_chunk_size_prod', '250000', 'Скільки рядків ProductsDraft обробляти за запуск у робочому режимі.'],
 
 
-    ['[Quick test mode]', '', ''],
-    ['pipeline_test_mode', 'FALSE', 'TRUE вмикає швидкий тестовий режим. FALSE використовує робочі production-налаштування.'],
-    ['test_force_restart_pipeline', 'TRUE', 'TRUE у тестовому режимі починає водоспад заново на кожному запуску.'],
-    ['test_merchant_snapshot_row_limit', '100', 'Скільки товарів взяти з Merchant API для швидкого тесту. 0 означає без обмеження.'],
-    ['test_merchant_api_page_size', '100', 'Скільки товарів запитувати з Merchant API за одну сторінку у тестовому режимі.'],
-    ['test_max_merchant_pages_per_run', '1', 'Скільки сторінок Merchant API обробляти за один запуск у тестовому режимі.'],
-    ['test_ads_periods_per_run', '4', 'Скільки періодів статистики Google Ads забирати за один запуск у тестовому режимі.'],
-    ['test_products_chunk_size', '100', 'Скільки рядків ProductsDraft обробляти за один запуск у тестовому режимі.'],
-
-
     ['[Merchant API / filters]', '', ''],
     ['merchant_api_page_size_prod', '1000', 'Скільки товарів запитувати з Merchant API за одну сторінку у робочому режимі.'],
     ['merchant_api_retry_count', '5', 'Кількість повторних спроб після помилки Merchant API.'],
@@ -276,7 +266,17 @@ function ensureSettingsTemplate_(sheet) {
     ['[Service]', '', ''],
     ['run_log_max_rows', '200', 'Максимальна кількість рядків у RunLog. Старі рядки видаляються.'],
     ['run_log_max_message_chars', '800', 'Максимальна кількість символів в одному повідомленні RunLog.'],
-    ['spreadsheet_locale', 'en_US', 'Локаль таблиці для стабільних дат, чисел і формул.']
+    ['spreadsheet_locale', 'en_US', 'Локаль таблиці для стабільних дат, чисел і формул.'],
+
+
+    ['[Quick test mode]', '', ''],
+    ['pipeline_test_mode', 'FALSE', 'TRUE вмикає швидкий тестовий режим. FALSE використовує робочі production-налаштування.'],
+    ['test_force_restart_pipeline', 'TRUE', 'TRUE у тестовому режимі починає водоспад заново на кожному запуску.'],
+    ['test_merchant_snapshot_row_limit', '100', 'Скільки товарів взяти з Merchant API для швидкого тесту. 0 означає без обмеження.'],
+    ['test_merchant_api_page_size', '100', 'Скільки товарів запитувати з Merchant API за одну сторінку у тестовому режимі.'],
+    ['test_max_merchant_pages_per_run', '1', 'Скільки сторінок Merchant API обробляти за один запуск у тестовому режимі.'],
+    ['test_ads_periods_per_run', '4', 'Скільки періодів статистики Google Ads забирати за один запуск у тестовому режимі.'],
+    ['test_products_chunk_size', '100', 'Скільки рядків ProductsDraft обробляти за один запуск у тестовому режимі.']
   ];
   var values = [headers];
   for (var i = 0; i < rows.length; i++) {
