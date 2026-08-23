@@ -33,6 +33,24 @@ var MERCHANT_SNAPSHOT_SHEET = 'MerchantSnapshot_Work';
 var ADS_STATS_SNAPSHOT_SHEET = 'AdsStatsSnapshot_Work';
 var PRODUCTS_DRAFT_SHEET = 'ProductsDraft_Work';
 var PRODUCTS_PUBLISH_WORK_SHEET = 'ProductsPublish_Work';
+var VISIBLE_SHEETS = [
+  PRODUCTS_SHEET,
+  SETTINGS_SHEET,
+  DASHBOARD_SHEET,
+  DASHBOARD_DATA_SHEET,
+  PRODUCT_DIAGNOSTICS_SHEET,
+  PRODUCT_TYPES_SHEET,
+  QUARANTINE_LOG_SHEET
+];
+var HIDDEN_SERVICE_SHEETS = [
+  QUARANTINE_REGISTRY_SHEET,
+  RUN_STATE_SHEET,
+  RUN_LOG_SHEET,
+  MERCHANT_SNAPSHOT_SHEET,
+  ADS_STATS_SNAPSHOT_SHEET,
+  PRODUCTS_DRAFT_SHEET,
+  PRODUCTS_PUBLISH_WORK_SHEET
+];
 
 
 var HEADER_BACKGROUND = '#c9daf8';
@@ -78,7 +96,13 @@ function main() {
       var result = dispatchStage_(ctx);
       finishRun_(ctx, result.status, result.message);
       if (ctx.stage === 'LOCKED' || result.status !== 'DONE') break;
-      var state = readState_(sheets.runState);
+      var state;
+      try {
+        state = readState_(sheets.runState);
+      } catch (stateErr) {
+        Logger.log('Post-stage state read failed after ' + ctx.stage + ': ' + String(stateErr));
+        break;
+      }
       if (!state.stage) break;
       if (state.stage === 'COMPLETE') break;
       ctx = startNextStageInSameRun_(ctx, state.stage);
@@ -123,6 +147,7 @@ function ensureSheets_(ss) {
   ensureProductsDraftHeader_(out.productsPublish, readSettings_(out.settings));
   ensureQuarantineHeaders_(out.quarantineRegistry, out.quarantineLog);
   compactManagedSheetGrids_(out, readSettings_(out.settings));
+  applyManagedSheetVisibility_(ss);
   return out;
 }
 
@@ -131,6 +156,38 @@ function ensureProductsFirst_(ss, productsSheet) {
   if (productsSheet.getIndex() !== 1) {
     ss.setActiveSheet(productsSheet);
     ss.moveActiveSheet(1);
+  }
+}
+
+
+function applyManagedSheetVisibility_(ss) {
+  var visible = {};
+  for (var i = 0; i < VISIBLE_SHEETS.length; i++) visible[VISIBLE_SHEETS[i]] = true;
+  for (var v = 0; v < VISIBLE_SHEETS.length; v++) {
+    var visibleSheet = ss.getSheetByName(VISIBLE_SHEETS[v]);
+    if (visibleSheet) safeShowSheet_(visibleSheet);
+  }
+  for (var h = 0; h < HIDDEN_SERVICE_SHEETS.length; h++) {
+    var hiddenSheet = ss.getSheetByName(HIDDEN_SERVICE_SHEETS[h]);
+    if (hiddenSheet && !visible[hiddenSheet.getName()]) safeHideSheet_(hiddenSheet);
+  }
+}
+
+
+function safeShowSheet_(sheet) {
+  try {
+    sheet.showSheet();
+  } catch (e) {
+    Logger.log('Sheet show skipped for ' + sheet.getName() + ': ' + String(e));
+  }
+}
+
+
+function safeHideSheet_(sheet) {
+  try {
+    sheet.hideSheet();
+  } catch (e) {
+    Logger.log('Sheet hide skipped for ' + sheet.getName() + ': ' + String(e));
   }
 }
 
@@ -205,6 +262,9 @@ function ensureSettingsTemplate_(sheet) {
     ['expensive_click_cpc_threshold', '3', 'Правило EXPENSIVE_CLICK: поріг середньої ціни кліку.'],
     ['expensive_click_period_days', '30', 'Період аналізу для правила EXPENSIVE_CLICK у днях.'],
     ['quarantine_days', '14', 'Скільки днів товар залишається виключеним після нового спрацювання карантину.'],
+    ['quarantine_registry_max_rows', '50000', 'М’який ліміт рядків QuarantineRegistry. Старі неактивні записи видаляються, активні карантини не обрізаються.'],
+    ['quarantine_log_max_rows', '20000', 'Максимальна кількість рядків історії у QuarantineLog. Старі рядки видаляються.'],
+    ['quarantine_keep_expired_days', '30', 'Скільки днів зберігати неактивні записи карантину після завершення active_until.'],
 
 
     ['[Service]', '', ''],
@@ -371,6 +431,9 @@ function readSettings_(sheet) {
     expensiveClickCpcThreshold: num_(raw.expensive_click_cpc_threshold, 3),
     expensiveClickPeriodDays: num_(raw.expensive_click_period_days, 30),
     quarantineDays: num_(raw.quarantine_days, 14),
+    quarantineRegistryMaxRows: num_(raw.quarantine_registry_max_rows, 50000),
+    quarantineLogMaxRows: num_(raw.quarantine_log_max_rows, 20000),
+    quarantineKeepExpiredDays: num_(raw.quarantine_keep_expired_days, 30),
     enableProductTypeFilter: bool_(raw.enable_product_type_filter, true),
     enableFunnelBuilder: bool_(raw.enable_funnel_builder, true),
     enableQuarantine: bool_(raw.enable_quarantine, true),
@@ -471,6 +534,8 @@ function startRun_(ss, sheets, settings, existingRunId) {
 function startStartupRun_(ss) {
   var runLog = ss.getSheetByName(RUN_LOG_SHEET) || ss.insertSheet(RUN_LOG_SHEET);
   var runState = ss.getSheetByName(RUN_STATE_SHEET) || ss.insertSheet(RUN_STATE_SHEET);
+  safeHideSheet_(runLog);
+  safeHideSheet_(runState);
   ensureRunLogHeader_(runLog);
   ensureRunStateHeader_(runState);
   var now = new Date();
@@ -718,8 +783,10 @@ function stageQuarantineUpdate_(ctx) {
     r.problematic = isActiveDate_(r.active_until, today);
     changed++;
   }
+  registry = pruneQuarantineRegistry_(registry, today, ctx.settings);
   writeQuarantineRegistry_(ctx.sheets.quarantineRegistry, registry);
   if (logRows.length) appendRows_(ctx.sheets.quarantineLog, logRows);
+  trimSheetToMaxDataRows_(ctx.sheets.quarantineLog, ctx.settings.quarantineLogMaxRows);
   advanceStage_(ctx, 'PRODUCTS_DRAFT_BUILD');
   return { status: 'DONE', message: 'Quarantine updated. Registry=' + changed + ', new reasons=' + logRows.length + ', periods=' + periods.length };
 }
@@ -782,11 +849,22 @@ function stagePublishProducts_(ctx) {
   var publicRows = Math.max(0, ctx.sheets.products.getLastRow() - 1);
   var publishWorkRows = Math.max(0, ctx.sheets.productsPublish.getLastRow() - 1);
   logProgress_(ctx, 'PUBLISH_PRODUCTS', 'CHECKPOINT', 'Publish state read. Written=' + written + ', publicRows=' + publicRows + ', workRows=' + publishWorkRows);
-  if (written >= draftRows && publicRows === draftRows && publishWorkRows === 0) {
+  if (publicRows === draftRows && publishWorkRows === 0 && productsSheetLooksPublished_(ctx.sheets.products, ctx.sheets.productsDraft, draftRows, cols)) {
     ctx.sheets.products = ctx.ss.getSheetByName(PRODUCTS_SHEET);
     ensureProductsFirst_(ctx.ss, ctx.sheets.products);
-    setStateValues_(ctx.sheets.runState, { last_successful_publish_at: iso_(new Date()) });
-    advanceStage_(ctx, 'PRODUCT_DIAGNOSTICS_BUILD');
+    try {
+      setStateValues_(ctx.sheets.runState, { last_successful_publish_at: iso_(new Date()) });
+    } catch (stateErr) {
+      Logger.log('Publish recovery state update skipped: ' + String(stateErr));
+    }
+    var recoveryAdvanced = true;
+    try {
+      advanceStage_(ctx, 'PRODUCT_DIAGNOSTICS_BUILD');
+    } catch (advanceErr) {
+      recoveryAdvanced = false;
+      Logger.log('Publish recovery stage advance skipped: ' + String(advanceErr));
+    }
+    if (!recoveryAdvanced) return { status: 'PARTIAL', message: 'Products publish already completed. Stage advance deferred after Sheets timeout. Rows=' + draftRows };
     return { status: 'DONE', message: 'Products publish already completed before previous logging failure. Rows=' + draftRows };
   }
   if (written === 0) {
@@ -811,12 +889,62 @@ function stagePublishProducts_(ctx) {
 
   logProgress_(ctx, 'PUBLISH_PRODUCTS', 'CHECKPOINT', 'Publish work copied. Swapping Products sheet. Rows=' + written);
   swapPublishedProductsSheet_(ctx);
-  logProgress_(ctx, 'PUBLISH_PRODUCTS', 'CHECKPOINT', 'Products sheet swapped. Updating final publish state.');
-  ctx.sheets.products = ctx.ss.getSheetByName(PRODUCTS_SHEET);
-  ensureProductsFirst_(ctx.ss, ctx.sheets.products);
-  setStateValues_(ctx.sheets.runState, { last_successful_publish_at: iso_(new Date()) });
-  advanceStage_(ctx, 'PRODUCT_DIAGNOSTICS_BUILD');
+  Logger.log('[PUBLISH_PRODUCTS] Products sheet swapped. Updating final publish state.');
+  try {
+    ctx.sheets.products = ctx.ss.getSheetByName(PRODUCTS_SHEET);
+    if (ctx.sheets.products) ensureProductsFirst_(ctx.ss, ctx.sheets.products);
+  } catch (sheetErr) {
+    Logger.log('Products sheet post-swap refresh skipped: ' + String(sheetErr));
+  }
+  try {
+    setStateValues_(ctx.sheets.runState, { last_successful_publish_at: iso_(new Date()) });
+  } catch (stateErr) {
+    Logger.log('Publish final timestamp update skipped after successful sheet swap: ' + String(stateErr));
+  }
+  var finalAdvanceDone = true;
+  try {
+    advanceStage_(ctx, 'PRODUCT_DIAGNOSTICS_BUILD');
+  } catch (advanceErr) {
+    finalAdvanceDone = false;
+    Logger.log('Publish final stage advance skipped after successful sheet swap: ' + String(advanceErr));
+  }
+  if (!finalAdvanceDone) return { status: 'PARTIAL', message: 'Products published. Stage advance deferred after Sheets timeout. Rows=' + draftRows };
   return { status: 'DONE', message: 'Products published. Rows=' + draftRows };
+}
+
+
+function productsSheetLooksPublished_(productsSheet, draftSheet, rowCount, colCount) {
+  try {
+    if (!productsSheet || !draftSheet) return false;
+    if (rowCount < 0 || colCount < 1) return false;
+    if (productsSheet.getLastColumn() < colCount || draftSheet.getLastColumn() < colCount) return false;
+    if (!sameRowValues_(productsSheet.getRange(1, 1, 1, colCount).getValues()[0], draftSheet.getRange(1, 1, 1, colCount).getValues()[0])) return false;
+    if (rowCount === 0) return true;
+    var rowsToCheck = [2, rowCount + 1];
+    if (rowCount > 2) rowsToCheck.push(Math.floor(rowCount / 2) + 1);
+    var seen = {};
+    for (var i = 0; i < rowsToCheck.length; i++) {
+      var row = rowsToCheck[i];
+      if (seen[row]) continue;
+      seen[row] = true;
+      var productRow = productsSheet.getRange(row, 1, 1, colCount).getValues()[0];
+      var draftRow = draftSheet.getRange(row, 1, 1, colCount).getValues()[0];
+      if (!sameRowValues_(productRow, draftRow)) return false;
+    }
+    return true;
+  } catch (e) {
+    Logger.log('Published Products verification skipped: ' + String(e));
+    return false;
+  }
+}
+
+
+function sameRowValues_(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (String(a[i]) !== String(b[i])) return false;
+  }
+  return true;
 }
 
 
@@ -835,6 +963,7 @@ function swapPublishedProductsSheet_(ctx) {
   try {
     var nextPublish = ss.getSheetByName(PRODUCTS_PUBLISH_WORK_SHEET) || ss.insertSheet(PRODUCTS_PUBLISH_WORK_SHEET);
     ensureProductsDraftHeader_(nextPublish, ctx.settings);
+    safeHideSheet_(nextPublish);
     ctx.sheets.productsPublish = nextPublish;
   } catch (e) {
     Logger.log('ProductsPublish_Work preparation skipped after publish swap: ' + String(e));
@@ -873,6 +1002,7 @@ function stageDashboard_(ctx) {
   });
   buildDashboardData_(ctx);
   buildDashboard_(ctx);
+  cleanupTransientWorkSheets_(ctx);
   return { status: 'DONE', message: 'Dashboard built.' };
 }
 
@@ -962,6 +1092,7 @@ function buildDashboardData_(ctx) {
     ['stats', 'ads_stats_rows', Math.max(0, ctx.sheets.adsStatsSnapshot.getLastRow() - 1)]
   ];
   for (var key in stageCounts) rows.push(['funnel_stage', key, stageCounts[key]]);
+  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), rows.length), 3).setNumberFormat('@');
   sheet.getRange(1, 1, rows.length, 3).setValues(rows);
 }
 
@@ -983,6 +1114,7 @@ function buildDashboard_(ctx) {
     ['product_type_paths', countProductTypePaths_(ctx.sheets.productTypes)],
     ['quarantine_registry_rows', Math.max(0, ctx.sheets.quarantineRegistry.getLastRow() - 1)]
   ];
+  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), rows.length), 2).setNumberFormat('@');
   sheet.getRange(1, 1, rows.length, 2).setValues(rows);
 }
 
@@ -1002,9 +1134,21 @@ function finishRun_(ctx, status, message) {
   } else if (status === 'SKIPPED') {
     state.pipeline_status = 'PARTIAL';
   }
-  setStateValues_(ctx.sheets.runState, state);
-  updateRunLog_(ctx.sheets.runLog, ctx.logRow, status, message, ctx.settings);
-  trimRunLog_(ctx.sheets.runLog, ctx.settings);
+  try {
+    setStateValues_(ctx.sheets.runState, state);
+  } catch (stateErr) {
+    Logger.log('RunState finish update failed: ' + String(stateErr));
+  }
+  try {
+    updateRunLog_(ctx.sheets.runLog, ctx.logRow, status, message, ctx.settings);
+  } catch (logErr) {
+    Logger.log('RunLog finish update failed: ' + String(logErr));
+  }
+  try {
+    trimRunLog_(ctx.sheets.runLog, ctx.settings);
+  } catch (trimErr) {
+    Logger.log('RunLog finish trim failed: ' + String(trimErr));
+  }
 }
 
 
@@ -1082,9 +1226,18 @@ function heartbeat_(ctx, key1, value1, key2, value2) {
 function logProgress_(ctx, stage, status, message) {
   var text = '[' + stage + '] ' + message;
   Logger.log(text);
+  if (status === 'CHECKPOINT') return;
   if (ctx && ctx.sheets && ctx.sheets.runLog) {
-    appendRunLog_(ctx.sheets.runLog, ctx.runId, stage, status, message);
-    trimRunLog_(ctx.sheets.runLog, ctx.settings);
+    try {
+      appendRunLog_(ctx.sheets.runLog, ctx.runId, stage, status, message);
+    } catch (logErr) {
+      Logger.log('RunLog progress append failed: ' + String(logErr));
+    }
+    try {
+      trimRunLog_(ctx.sheets.runLog, ctx.settings);
+    } catch (trimErr) {
+      Logger.log('RunLog progress trim failed: ' + String(trimErr));
+    }
   }
 }
 
@@ -1636,6 +1789,44 @@ function writeQuarantineRegistry_(sheet, registry) {
 }
 
 
+function pruneQuarantineRegistry_(registry, today, settings) {
+  var maxRows = Math.max(0, num_(settings && settings.quarantineRegistryMaxRows, 50000));
+  var keepExpiredDays = Math.max(0, num_(settings && settings.quarantineKeepExpiredDays, 30));
+  if (!maxRows && keepExpiredDays <= 0) return registry;
+  var cutoff = dateOnly_(addDays_(new Date(today), -keepExpiredDays));
+  var active = [];
+  var inactive = [];
+  for (var id in registry) {
+    var r = registry[id];
+    if (isActiveDate_(r.active_until, today)) active.push(r);
+    else if (!r.active_until || String(r.active_until).substring(0, 10) >= cutoff || String(r.last_added || '').substring(0, 10) >= cutoff) inactive.push(r);
+  }
+  inactive.sort(function(a, b) {
+    return maxDateString_(b.active_until, b.last_added).localeCompare(maxDateString_(a.active_until, a.last_added));
+  });
+  var keepInactive = maxRows > 0 ? Math.max(0, maxRows - active.length) : inactive.length;
+  var out = {};
+  for (var i = 0; i < active.length; i++) out[active[i].id] = active[i];
+  for (var j = 0; j < inactive.length && j < keepInactive; j++) out[inactive[j].id] = inactive[j];
+  return out;
+}
+
+
+function trimSheetToMaxDataRows_(sheet, maxRows) {
+  if (!sheet) return;
+  maxRows = Math.max(0, num_(maxRows, 0));
+  if (!maxRows) return;
+  try {
+    var dataRows = Math.max(0, sheet.getLastRow() - 1);
+    var extraRows = dataRows - maxRows;
+    if (extraRows > 0) sheet.deleteRows(2, extraRows);
+    ensureSheetRows_(sheet, Math.min(sheet.getMaxRows(), Math.max(1, Math.min(maxRows + 1, sheet.getLastRow()))));
+  } catch (e) {
+    Logger.log('Sheet trim skipped: ' + String(e));
+  }
+}
+
+
 function readActiveQuarantineMap_(sheet) {
   var reg = readQuarantineRegistry_(sheet);
   var today = dateOnly_(new Date());
@@ -1655,6 +1846,7 @@ function readMerchantPriceMap_(sheet) {
 
 
 function ensureRunStateHeader_(sheet) {
+  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), 1), 2).setNumberFormat('@');
   if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, 2).setValues([['key', 'value']]);
 }
 
@@ -1699,6 +1891,26 @@ function compactManagedSheetGrids_(sheets, settings) {
 }
 
 
+function cleanupTransientWorkSheets_(ctx) {
+  try {
+    clearManagedWorkSheet_(ctx.sheets.merchantSnapshot, 10);
+    clearManagedWorkSheet_(ctx.sheets.adsStatsSnapshot, 8);
+    clearManagedWorkSheet_(ctx.sheets.productsDraft, ctx.settings.benchmarkOutputAttribute ? 5 : 4);
+    clearManagedWorkSheet_(ctx.sheets.productsPublish, ctx.settings.benchmarkOutputAttribute ? 5 : 4);
+  } catch (e) {
+    Logger.log('Transient work sheets cleanup skipped: ' + String(e));
+  }
+}
+
+
+function clearManagedWorkSheet_(sheet, requiredCols) {
+  if (!sheet) return;
+  clearBelowHeader_(sheet);
+  ensureSheetColumns_(sheet, requiredCols);
+  ensureSheetRows_(sheet, 1);
+}
+
+
 function ensureSheetColumns_(sheet, requiredCols) {
   if (!sheet || !requiredCols) return;
   var currentCols = sheet.getMaxColumns();
@@ -1706,6 +1918,18 @@ function ensureSheetColumns_(sheet, requiredCols) {
     sheet.deleteColumns(requiredCols + 1, currentCols - requiredCols);
   } else if (currentCols < requiredCols) {
     sheet.insertColumnsAfter(currentCols, requiredCols - currentCols);
+  }
+}
+
+
+function ensureSheetRows_(sheet, requiredRows) {
+  if (!sheet || !requiredRows) return;
+  requiredRows = Math.max(1, requiredRows);
+  var currentRows = sheet.getMaxRows();
+  if (currentRows > requiredRows) {
+    sheet.deleteRows(requiredRows + 1, currentRows - requiredRows);
+  } else if (currentRows < requiredRows) {
+    sheet.insertRowsAfter(currentRows, requiredRows - currentRows);
   }
 }
 
@@ -1747,36 +1971,44 @@ function setStateValues_(sheet, values) {
       data.push([key, values[key]]);
     }
   }
+  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), data.length), 2).setNumberFormat('@');
   sheet.getRange(1, 1, data.length, 2).setValues(data);
 }
 
 
 function appendRunLog_(sheet, runId, stage, status, message) {
-  var row = sheet.getLastRow() + 1;
   var msg = truncateLogMessage_(message, null);
   Logger.log('RunLog ' + stage + ' ' + status + ': ' + msg);
-  try {
-    sheet.getRange(row, 1, 1, 8).setValues([[iso_(new Date()), '', runId, stage, status, msg, '', 'google_ads_script']]);
-    return row;
-  } catch (e) {
-    Logger.log('RunLog append failed: ' + String(e));
-    return null;
+  for (var attempt = 1; attempt <= 3; attempt++) {
+    try {
+      var row = sheet.getLastRow() + 1;
+      sheet.getRange(row, 1, 1, 8).setValues([[iso_(new Date()), '', runId, stage, status, msg, '', 'google_ads_script']]);
+      return row;
+    } catch (e) {
+      Logger.log('RunLog append failed attempt ' + attempt + ': ' + String(e));
+      if (attempt < 3) Utilities.sleep(1000 * attempt);
+    }
   }
+  return null;
 }
 
 
 function updateRunLog_(sheet, row, status, message, settings) {
   if (!row) return;
-  try {
-    var started = sheet.getRange(row, 1).getValue();
-    var duration = started ? Math.round((new Date().getTime() - new Date(started).getTime()) / 1000) : '';
-    var stage = sheet.getRange(row, 4).getValue();
-    var msg = truncateLogMessage_(message, settings);
-    Logger.log('RunLog ' + stage + ' ' + status + ': ' + msg);
-    sheet.getRange(row, 2, 1, 5).setValues([[iso_(new Date()), sheet.getRange(row, 3).getValue(), stage, status, msg]]);
-    sheet.getRange(row, 7).setValue(duration);
-  } catch (e) {
-    Logger.log('RunLog update failed: ' + String(e));
+  for (var attempt = 1; attempt <= 3; attempt++) {
+    try {
+      var started = sheet.getRange(row, 1).getValue();
+      var duration = started ? Math.round((new Date().getTime() - new Date(started).getTime()) / 1000) : '';
+      var runId = sheet.getRange(row, 3).getValue();
+      var stage = sheet.getRange(row, 4).getValue();
+      var msg = truncateLogMessage_(message, settings);
+      Logger.log('RunLog ' + stage + ' ' + status + ': ' + msg);
+      sheet.getRange(row, 2, 1, 6).setValues([[iso_(new Date()), runId, stage, status, msg, duration]]);
+      return;
+    } catch (e) {
+      Logger.log('RunLog update failed attempt ' + attempt + ': ' + String(e));
+      if (attempt < 3) Utilities.sleep(1000 * attempt);
+    }
   }
 }
 
