@@ -33,6 +33,24 @@ var MERCHANT_SNAPSHOT_SHEET = 'MerchantSnapshot_Work';
 var ADS_STATS_SNAPSHOT_SHEET = 'AdsStatsSnapshot_Work';
 var PRODUCTS_DRAFT_SHEET = 'ProductsDraft_Work';
 var PRODUCTS_PUBLISH_WORK_SHEET = 'ProductsPublish_Work';
+var VISIBLE_SHEETS = [
+  PRODUCTS_SHEET,
+  SETTINGS_SHEET,
+  DASHBOARD_SHEET,
+  DASHBOARD_DATA_SHEET,
+  PRODUCT_DIAGNOSTICS_SHEET,
+  PRODUCT_TYPES_SHEET,
+  QUARANTINE_LOG_SHEET
+];
+var HIDDEN_SERVICE_SHEETS = [
+  QUARANTINE_REGISTRY_SHEET,
+  RUN_STATE_SHEET,
+  RUN_LOG_SHEET,
+  MERCHANT_SNAPSHOT_SHEET,
+  ADS_STATS_SNAPSHOT_SHEET,
+  PRODUCTS_DRAFT_SHEET,
+  PRODUCTS_PUBLISH_WORK_SHEET
+];
 
 
 var HEADER_BACKGROUND = '#c9daf8';
@@ -129,6 +147,7 @@ function ensureSheets_(ss) {
   ensureProductsDraftHeader_(out.productsPublish, readSettings_(out.settings));
   ensureQuarantineHeaders_(out.quarantineRegistry, out.quarantineLog);
   compactManagedSheetGrids_(out, readSettings_(out.settings));
+  applyManagedSheetVisibility_(ss);
   return out;
 }
 
@@ -137,6 +156,38 @@ function ensureProductsFirst_(ss, productsSheet) {
   if (productsSheet.getIndex() !== 1) {
     ss.setActiveSheet(productsSheet);
     ss.moveActiveSheet(1);
+  }
+}
+
+
+function applyManagedSheetVisibility_(ss) {
+  var visible = {};
+  for (var i = 0; i < VISIBLE_SHEETS.length; i++) visible[VISIBLE_SHEETS[i]] = true;
+  for (var v = 0; v < VISIBLE_SHEETS.length; v++) {
+    var visibleSheet = ss.getSheetByName(VISIBLE_SHEETS[v]);
+    if (visibleSheet) safeShowSheet_(visibleSheet);
+  }
+  for (var h = 0; h < HIDDEN_SERVICE_SHEETS.length; h++) {
+    var hiddenSheet = ss.getSheetByName(HIDDEN_SERVICE_SHEETS[h]);
+    if (hiddenSheet && !visible[hiddenSheet.getName()]) safeHideSheet_(hiddenSheet);
+  }
+}
+
+
+function safeShowSheet_(sheet) {
+  try {
+    sheet.showSheet();
+  } catch (e) {
+    Logger.log('Sheet show skipped for ' + sheet.getName() + ': ' + String(e));
+  }
+}
+
+
+function safeHideSheet_(sheet) {
+  try {
+    sheet.hideSheet();
+  } catch (e) {
+    Logger.log('Sheet hide skipped for ' + sheet.getName() + ': ' + String(e));
   }
 }
 
@@ -483,6 +534,8 @@ function startRun_(ss, sheets, settings, existingRunId) {
 function startStartupRun_(ss) {
   var runLog = ss.getSheetByName(RUN_LOG_SHEET) || ss.insertSheet(RUN_LOG_SHEET);
   var runState = ss.getSheetByName(RUN_STATE_SHEET) || ss.insertSheet(RUN_STATE_SHEET);
+  safeHideSheet_(runLog);
+  safeHideSheet_(runState);
   ensureRunLogHeader_(runLog);
   ensureRunStateHeader_(runState);
   var now = new Date();
@@ -910,6 +963,7 @@ function swapPublishedProductsSheet_(ctx) {
   try {
     var nextPublish = ss.getSheetByName(PRODUCTS_PUBLISH_WORK_SHEET) || ss.insertSheet(PRODUCTS_PUBLISH_WORK_SHEET);
     ensureProductsDraftHeader_(nextPublish, ctx.settings);
+    safeHideSheet_(nextPublish);
     ctx.sheets.productsPublish = nextPublish;
   } catch (e) {
     Logger.log('ProductsPublish_Work preparation skipped after publish swap: ' + String(e));
