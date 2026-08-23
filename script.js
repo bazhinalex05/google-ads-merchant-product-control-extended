@@ -211,6 +211,9 @@ function ensureSettingsTemplate_(sheet) {
     ['expensive_click_cpc_threshold', '3', 'Правило EXPENSIVE_CLICK: поріг середньої ціни кліку.'],
     ['expensive_click_period_days', '30', 'Період аналізу для правила EXPENSIVE_CLICK у днях.'],
     ['quarantine_days', '14', 'Скільки днів товар залишається виключеним після нового спрацювання карантину.'],
+    ['quarantine_registry_max_rows', '50000', 'М’який ліміт рядків QuarantineRegistry. Старі неактивні записи видаляються, активні карантини не обрізаються.'],
+    ['quarantine_log_max_rows', '20000', 'Максимальна кількість рядків історії у QuarantineLog. Старі рядки видаляються.'],
+    ['quarantine_keep_expired_days', '30', 'Скільки днів зберігати неактивні записи карантину після завершення active_until.'],
 
 
     ['[Service]', '', ''],
@@ -377,6 +380,9 @@ function readSettings_(sheet) {
     expensiveClickCpcThreshold: num_(raw.expensive_click_cpc_threshold, 3),
     expensiveClickPeriodDays: num_(raw.expensive_click_period_days, 30),
     quarantineDays: num_(raw.quarantine_days, 14),
+    quarantineRegistryMaxRows: num_(raw.quarantine_registry_max_rows, 50000),
+    quarantineLogMaxRows: num_(raw.quarantine_log_max_rows, 20000),
+    quarantineKeepExpiredDays: num_(raw.quarantine_keep_expired_days, 30),
     enableProductTypeFilter: bool_(raw.enable_product_type_filter, true),
     enableFunnelBuilder: bool_(raw.enable_funnel_builder, true),
     enableQuarantine: bool_(raw.enable_quarantine, true),
@@ -724,8 +730,10 @@ function stageQuarantineUpdate_(ctx) {
     r.problematic = isActiveDate_(r.active_until, today);
     changed++;
   }
+  registry = pruneQuarantineRegistry_(registry, today, ctx.settings);
   writeQuarantineRegistry_(ctx.sheets.quarantineRegistry, registry);
   if (logRows.length) appendRows_(ctx.sheets.quarantineLog, logRows);
+  trimSheetToMaxDataRows_(ctx.sheets.quarantineLog, ctx.settings.quarantineLogMaxRows);
   advanceStage_(ctx, 'PRODUCTS_DRAFT_BUILD');
   return { status: 'DONE', message: 'Quarantine updated. Registry=' + changed + ', new reasons=' + logRows.length + ', periods=' + periods.length };
 }
@@ -940,6 +948,7 @@ function stageDashboard_(ctx) {
   });
   buildDashboardData_(ctx);
   buildDashboard_(ctx);
+  cleanupTransientWorkSheets_(ctx);
   return { status: 'DONE', message: 'Dashboard built.' };
 }
 
@@ -1726,6 +1735,44 @@ function writeQuarantineRegistry_(sheet, registry) {
 }
 
 
+function pruneQuarantineRegistry_(registry, today, settings) {
+  var maxRows = Math.max(0, num_(settings && settings.quarantineRegistryMaxRows, 50000));
+  var keepExpiredDays = Math.max(0, num_(settings && settings.quarantineKeepExpiredDays, 30));
+  if (!maxRows && keepExpiredDays <= 0) return registry;
+  var cutoff = dateOnly_(addDays_(new Date(today), -keepExpiredDays));
+  var active = [];
+  var inactive = [];
+  for (var id in registry) {
+    var r = registry[id];
+    if (isActiveDate_(r.active_until, today)) active.push(r);
+    else if (!r.active_until || String(r.active_until).substring(0, 10) >= cutoff || String(r.last_added || '').substring(0, 10) >= cutoff) inactive.push(r);
+  }
+  inactive.sort(function(a, b) {
+    return maxDateString_(b.active_until, b.last_added).localeCompare(maxDateString_(a.active_until, a.last_added));
+  });
+  var keepInactive = maxRows > 0 ? Math.max(0, maxRows - active.length) : inactive.length;
+  var out = {};
+  for (var i = 0; i < active.length; i++) out[active[i].id] = active[i];
+  for (var j = 0; j < inactive.length && j < keepInactive; j++) out[inactive[j].id] = inactive[j];
+  return out;
+}
+
+
+function trimSheetToMaxDataRows_(sheet, maxRows) {
+  if (!sheet) return;
+  maxRows = Math.max(0, num_(maxRows, 0));
+  if (!maxRows) return;
+  try {
+    var dataRows = Math.max(0, sheet.getLastRow() - 1);
+    var extraRows = dataRows - maxRows;
+    if (extraRows > 0) sheet.deleteRows(2, extraRows);
+    ensureSheetRows_(sheet, Math.min(sheet.getMaxRows(), Math.max(1, Math.min(maxRows + 1, sheet.getLastRow()))));
+  } catch (e) {
+    Logger.log('Sheet trim skipped: ' + String(e));
+  }
+}
+
+
 function readActiveQuarantineMap_(sheet) {
   var reg = readQuarantineRegistry_(sheet);
   var today = dateOnly_(new Date());
@@ -1790,6 +1837,26 @@ function compactManagedSheetGrids_(sheets, settings) {
 }
 
 
+function cleanupTransientWorkSheets_(ctx) {
+  try {
+    clearManagedWorkSheet_(ctx.sheets.merchantSnapshot, 10);
+    clearManagedWorkSheet_(ctx.sheets.adsStatsSnapshot, 8);
+    clearManagedWorkSheet_(ctx.sheets.productsDraft, ctx.settings.benchmarkOutputAttribute ? 5 : 4);
+    clearManagedWorkSheet_(ctx.sheets.productsPublish, ctx.settings.benchmarkOutputAttribute ? 5 : 4);
+  } catch (e) {
+    Logger.log('Transient work sheets cleanup skipped: ' + String(e));
+  }
+}
+
+
+function clearManagedWorkSheet_(sheet, requiredCols) {
+  if (!sheet) return;
+  clearBelowHeader_(sheet);
+  ensureSheetColumns_(sheet, requiredCols);
+  ensureSheetRows_(sheet, 1);
+}
+
+
 function ensureSheetColumns_(sheet, requiredCols) {
   if (!sheet || !requiredCols) return;
   var currentCols = sheet.getMaxColumns();
@@ -1797,6 +1864,18 @@ function ensureSheetColumns_(sheet, requiredCols) {
     sheet.deleteColumns(requiredCols + 1, currentCols - requiredCols);
   } else if (currentCols < requiredCols) {
     sheet.insertColumnsAfter(currentCols, requiredCols - currentCols);
+  }
+}
+
+
+function ensureSheetRows_(sheet, requiredRows) {
+  if (!sheet || !requiredRows) return;
+  requiredRows = Math.max(1, requiredRows);
+  var currentRows = sheet.getMaxRows();
+  if (currentRows > requiredRows) {
+    sheet.deleteRows(requiredRows + 1, currentRows - requiredRows);
+  } else if (currentRows < requiredRows) {
+    sheet.insertRowsAfter(currentRows, requiredRows - currentRows);
   }
 }
 
