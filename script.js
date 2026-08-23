@@ -782,11 +782,19 @@ function stagePublishProducts_(ctx) {
   var publicRows = Math.max(0, ctx.sheets.products.getLastRow() - 1);
   var publishWorkRows = Math.max(0, ctx.sheets.productsPublish.getLastRow() - 1);
   logProgress_(ctx, 'PUBLISH_PRODUCTS', 'CHECKPOINT', 'Publish state read. Written=' + written + ', publicRows=' + publicRows + ', workRows=' + publishWorkRows);
-  if (written >= draftRows && publicRows === draftRows && publishWorkRows === 0) {
+  if (publicRows === draftRows && publishWorkRows === 0 && productsSheetLooksPublished_(ctx.sheets.products, ctx.sheets.productsDraft, draftRows, cols)) {
     ctx.sheets.products = ctx.ss.getSheetByName(PRODUCTS_SHEET);
     ensureProductsFirst_(ctx.ss, ctx.sheets.products);
-    setStateValues_(ctx.sheets.runState, { last_successful_publish_at: iso_(new Date()) });
-    advanceStage_(ctx, 'PRODUCT_DIAGNOSTICS_BUILD');
+    try {
+      setStateValues_(ctx.sheets.runState, { last_successful_publish_at: iso_(new Date()) });
+    } catch (stateErr) {
+      Logger.log('Publish recovery state update skipped: ' + String(stateErr));
+    }
+    try {
+      advanceStage_(ctx, 'PRODUCT_DIAGNOSTICS_BUILD');
+    } catch (advanceErr) {
+      Logger.log('Publish recovery stage advance skipped: ' + String(advanceErr));
+    }
     return { status: 'DONE', message: 'Products publish already completed before previous logging failure. Rows=' + draftRows };
   }
   if (written === 0) {
@@ -811,12 +819,50 @@ function stagePublishProducts_(ctx) {
 
   logProgress_(ctx, 'PUBLISH_PRODUCTS', 'CHECKPOINT', 'Publish work copied. Swapping Products sheet. Rows=' + written);
   swapPublishedProductsSheet_(ctx);
-  logProgress_(ctx, 'PUBLISH_PRODUCTS', 'CHECKPOINT', 'Products sheet swapped. Updating final publish state.');
+  Logger.log('[PUBLISH_PRODUCTS] Products sheet swapped. Updating final publish state.');
   ctx.sheets.products = ctx.ss.getSheetByName(PRODUCTS_SHEET);
   ensureProductsFirst_(ctx.ss, ctx.sheets.products);
-  setStateValues_(ctx.sheets.runState, { last_successful_publish_at: iso_(new Date()) });
-  advanceStage_(ctx, 'PRODUCT_DIAGNOSTICS_BUILD');
+  try {
+    setStateValues_(ctx.sheets.runState, { last_successful_publish_at: iso_(new Date()) });
+  } catch (stateErr) {
+    Logger.log('Publish final timestamp update skipped after successful sheet swap: ' + String(stateErr));
+  }
+  try {
+    advanceStage_(ctx, 'PRODUCT_DIAGNOSTICS_BUILD');
+  } catch (advanceErr) {
+    Logger.log('Publish final stage advance skipped after successful sheet swap: ' + String(advanceErr));
+  }
   return { status: 'DONE', message: 'Products published. Rows=' + draftRows };
+}
+
+
+function productsSheetLooksPublished_(productsSheet, draftSheet, rowCount, colCount) {
+  if (!productsSheet || !draftSheet) return false;
+  if (rowCount < 0 || colCount < 1) return false;
+  if (productsSheet.getLastColumn() < colCount || draftSheet.getLastColumn() < colCount) return false;
+  if (!sameRowValues_(productsSheet.getRange(1, 1, 1, colCount).getValues()[0], draftSheet.getRange(1, 1, 1, colCount).getValues()[0])) return false;
+  if (rowCount === 0) return true;
+  var rowsToCheck = [2, rowCount + 1];
+  if (rowCount > 2) rowsToCheck.push(Math.floor(rowCount / 2) + 1);
+  var seen = {};
+  for (var i = 0; i < rowsToCheck.length; i++) {
+    var row = rowsToCheck[i];
+    if (seen[row]) continue;
+    seen[row] = true;
+    var productRow = productsSheet.getRange(row, 1, 1, colCount).getValues()[0];
+    var draftRow = draftSheet.getRange(row, 1, 1, colCount).getValues()[0];
+    if (!sameRowValues_(productRow, draftRow)) return false;
+  }
+  return true;
+}
+
+
+function sameRowValues_(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (String(a[i]) !== String(b[i])) return false;
+  }
+  return true;
 }
 
 
@@ -1002,9 +1048,21 @@ function finishRun_(ctx, status, message) {
   } else if (status === 'SKIPPED') {
     state.pipeline_status = 'PARTIAL';
   }
-  setStateValues_(ctx.sheets.runState, state);
-  updateRunLog_(ctx.sheets.runLog, ctx.logRow, status, message, ctx.settings);
-  trimRunLog_(ctx.sheets.runLog, ctx.settings);
+  try {
+    setStateValues_(ctx.sheets.runState, state);
+  } catch (stateErr) {
+    Logger.log('RunState finish update failed: ' + String(stateErr));
+  }
+  try {
+    updateRunLog_(ctx.sheets.runLog, ctx.logRow, status, message, ctx.settings);
+  } catch (logErr) {
+    Logger.log('RunLog finish update failed: ' + String(logErr));
+  }
+  try {
+    trimRunLog_(ctx.sheets.runLog, ctx.settings);
+  } catch (trimErr) {
+    Logger.log('RunLog finish trim failed: ' + String(trimErr));
+  }
 }
 
 
@@ -1083,8 +1141,16 @@ function logProgress_(ctx, stage, status, message) {
   var text = '[' + stage + '] ' + message;
   Logger.log(text);
   if (ctx && ctx.sheets && ctx.sheets.runLog) {
-    appendRunLog_(ctx.sheets.runLog, ctx.runId, stage, status, message);
-    trimRunLog_(ctx.sheets.runLog, ctx.settings);
+    try {
+      appendRunLog_(ctx.sheets.runLog, ctx.runId, stage, status, message);
+    } catch (logErr) {
+      Logger.log('RunLog progress append failed: ' + String(logErr));
+    }
+    try {
+      trimRunLog_(ctx.sheets.runLog, ctx.settings);
+    } catch (trimErr) {
+      Logger.log('RunLog progress trim failed: ' + String(trimErr));
+    }
   }
 }
 
@@ -1752,10 +1818,10 @@ function setStateValues_(sheet, values) {
 
 
 function appendRunLog_(sheet, runId, stage, status, message) {
-  var row = sheet.getLastRow() + 1;
   var msg = truncateLogMessage_(message, null);
   Logger.log('RunLog ' + stage + ' ' + status + ': ' + msg);
   try {
+    var row = sheet.getLastRow() + 1;
     sheet.getRange(row, 1, 1, 8).setValues([[iso_(new Date()), '', runId, stage, status, msg, '', 'google_ads_script']]);
     return row;
   } catch (e) {
