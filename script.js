@@ -1029,6 +1029,7 @@ function buildDashboardData_(ctx) {
     ['stats', 'ads_stats_rows', Math.max(0, ctx.sheets.adsStatsSnapshot.getLastRow() - 1)]
   ];
   for (var key in stageCounts) rows.push(['funnel_stage', key, stageCounts[key]]);
+  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), rows.length), 3).setNumberFormat('@');
   sheet.getRange(1, 1, rows.length, 3).setValues(rows);
 }
 
@@ -1050,6 +1051,7 @@ function buildDashboard_(ctx) {
     ['product_type_paths', countProductTypePaths_(ctx.sheets.productTypes)],
     ['quarantine_registry_rows', Math.max(0, ctx.sheets.quarantineRegistry.getLastRow() - 1)]
   ];
+  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), rows.length), 2).setNumberFormat('@');
   sheet.getRange(1, 1, rows.length, 2).setValues(rows);
 }
 
@@ -1161,6 +1163,7 @@ function heartbeat_(ctx, key1, value1, key2, value2) {
 function logProgress_(ctx, stage, status, message) {
   var text = '[' + stage + '] ' + message;
   Logger.log(text);
+  if (status === 'CHECKPOINT') return;
   if (ctx && ctx.sheets && ctx.sheets.runLog) {
     try {
       appendRunLog_(ctx.sheets.runLog, ctx.runId, stage, status, message);
@@ -1742,6 +1745,7 @@ function readMerchantPriceMap_(sheet) {
 
 
 function ensureRunStateHeader_(sheet) {
+  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), 1), 2).setNumberFormat('@');
   if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, 2).setValues([['key', 'value']]);
 }
 
@@ -1834,6 +1838,7 @@ function setStateValues_(sheet, values) {
       data.push([key, values[key]]);
     }
   }
+  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), data.length), 2).setNumberFormat('@');
   sheet.getRange(1, 1, data.length, 2).setValues(data);
 }
 
@@ -1841,29 +1846,36 @@ function setStateValues_(sheet, values) {
 function appendRunLog_(sheet, runId, stage, status, message) {
   var msg = truncateLogMessage_(message, null);
   Logger.log('RunLog ' + stage + ' ' + status + ': ' + msg);
-  try {
-    var row = sheet.getLastRow() + 1;
-    sheet.getRange(row, 1, 1, 8).setValues([[iso_(new Date()), '', runId, stage, status, msg, '', 'google_ads_script']]);
-    return row;
-  } catch (e) {
-    Logger.log('RunLog append failed: ' + String(e));
-    return null;
+  for (var attempt = 1; attempt <= 3; attempt++) {
+    try {
+      var row = sheet.getLastRow() + 1;
+      sheet.getRange(row, 1, 1, 8).setValues([[iso_(new Date()), '', runId, stage, status, msg, '', 'google_ads_script']]);
+      return row;
+    } catch (e) {
+      Logger.log('RunLog append failed attempt ' + attempt + ': ' + String(e));
+      if (attempt < 3) Utilities.sleep(1000 * attempt);
+    }
   }
+  return null;
 }
 
 
 function updateRunLog_(sheet, row, status, message, settings) {
   if (!row) return;
-  try {
-    var started = sheet.getRange(row, 1).getValue();
-    var duration = started ? Math.round((new Date().getTime() - new Date(started).getTime()) / 1000) : '';
-    var stage = sheet.getRange(row, 4).getValue();
-    var msg = truncateLogMessage_(message, settings);
-    Logger.log('RunLog ' + stage + ' ' + status + ': ' + msg);
-    sheet.getRange(row, 2, 1, 5).setValues([[iso_(new Date()), sheet.getRange(row, 3).getValue(), stage, status, msg]]);
-    sheet.getRange(row, 7).setValue(duration);
-  } catch (e) {
-    Logger.log('RunLog update failed: ' + String(e));
+  for (var attempt = 1; attempt <= 3; attempt++) {
+    try {
+      var started = sheet.getRange(row, 1).getValue();
+      var duration = started ? Math.round((new Date().getTime() - new Date(started).getTime()) / 1000) : '';
+      var runId = sheet.getRange(row, 3).getValue();
+      var stage = sheet.getRange(row, 4).getValue();
+      var msg = truncateLogMessage_(message, settings);
+      Logger.log('RunLog ' + stage + ' ' + status + ': ' + msg);
+      sheet.getRange(row, 2, 1, 6).setValues([[iso_(new Date()), runId, stage, status, msg, duration]]);
+      return;
+    } catch (e) {
+      Logger.log('RunLog update failed attempt ' + attempt + ': ' + String(e));
+      if (attempt < 3) Utilities.sleep(1000 * attempt);
+    }
   }
 }
 
