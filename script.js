@@ -204,20 +204,26 @@ function ensureSettingsTemplate_(sheet) {
 
 
     ['[Pipeline / run control]', '', ''],
-    ['pipeline_test_mode', 'FALSE', 'TRUE вмикає тестові ліміти обробки. FALSE вмикає робочі ліміти.'],
     ['force_restart_pipeline', 'FALSE', 'TRUE перезапускає водоспад з етапу Merchant snapshot на наступному запуску.'],
     ['max_run_minutes', '25', 'Цільовий ліміт часу запуску в хвилинах для перевірок між безпечними порціями.'],
     ['run_lock_minutes', '40', 'Через скільки хвилин RUNNING-етап вважається завислим і доступним для відновлення.'],
-    ['merchant_snapshot_test_row_limit', '0', 'Тестовий ліміт рядків Merchant snapshot. 0 означає без обмеження.'],
-    ['max_merchant_pages_per_run', '2', 'Скільки сторінок Merchant API обробляти за запуск у тестовому режимі.'],
     ['max_merchant_pages_per_run_prod', '50', 'Скільки сторінок Merchant API обробляти за запуск у робочому режимі.'],
-    ['ads_periods_per_run', '1', 'Скільки періодів статистики Google Ads забирати за один запуск.'],
-    ['products_chunk_size', '5000', 'Скільки рядків ProductsDraft обробляти за запуск у тестовому режимі.'],
+    ['ads_periods_per_run_prod', '1', 'Скільки періодів статистики Google Ads забирати за один запуск у робочому режимі.'],
     ['products_chunk_size_prod', '250000', 'Скільки рядків ProductsDraft обробляти за запуск у робочому режимі.'],
 
 
+    ['[Quick test mode]', '', ''],
+    ['pipeline_test_mode', 'FALSE', 'TRUE вмикає швидкий тестовий режим. FALSE використовує робочі production-налаштування.'],
+    ['test_force_restart_pipeline', 'TRUE', 'TRUE у тестовому режимі починає водоспад заново на кожному запуску.'],
+    ['test_merchant_snapshot_row_limit', '100', 'Скільки товарів взяти з Merchant API для швидкого тесту. 0 означає без обмеження.'],
+    ['test_merchant_api_page_size', '100', 'Скільки товарів запитувати з Merchant API за одну сторінку у тестовому режимі.'],
+    ['test_max_merchant_pages_per_run', '1', 'Скільки сторінок Merchant API обробляти за один запуск у тестовому режимі.'],
+    ['test_ads_periods_per_run', '4', 'Скільки періодів статистики Google Ads забирати за один запуск у тестовому режимі.'],
+    ['test_products_chunk_size', '100', 'Скільки рядків ProductsDraft обробляти за один запуск у тестовому режимі.'],
+
+
     ['[Merchant API / filters]', '', ''],
-    ['merchant_api_page_size', '1000', 'Скільки товарів запитувати з Merchant API за одну сторінку.'],
+    ['merchant_api_page_size_prod', '1000', 'Скільки товарів запитувати з Merchant API за одну сторінку у робочому режимі.'],
     ['merchant_api_retry_count', '5', 'Кількість повторних спроб після помилки Merchant API.'],
     ['merchant_api_retry_sleep_seconds', '10', 'Базова пауза в секундах між повторними спробами Merchant API.'],
     ['merchant_data_source_id_filter', '', 'ID джерел даних Merchant через кому, які потрібно включити. Порожньо означає включити всі.'],
@@ -341,6 +347,7 @@ function isBooleanSettingKey_(key) {
     auto_register_gcp_project: true,
     pipeline_test_mode: true,
     force_restart_pipeline: true,
+    test_force_restart_pipeline: true,
     enable_benchmark_grouping: true,
     enable_products_write: true,
     enable_product_type_filter: true,
@@ -392,27 +399,38 @@ function applySettingsDropdowns_(sheet, values) {
 
 function readSettings_(sheet) {
   var raw = readSettingsMap_(sheet);
+  var testMode = bool_(raw.pipeline_test_mode, false);
+  var testForceRestart = bool_(raw.test_force_restart_pipeline, true);
+  var merchantPageSizeProd = num_(raw.merchant_api_page_size_prod, num_(raw.merchant_api_page_size, 1000));
+  var merchantPageSizeTest = num_(raw.test_merchant_api_page_size, 100);
+  var merchantSnapshotTestRowLimit = num_(raw.test_merchant_snapshot_row_limit, num_(raw.merchant_snapshot_test_row_limit, 0));
+  var maxMerchantPagesPerRunProd = num_(raw.max_merchant_pages_per_run_prod, 50);
+  var maxMerchantPagesPerRunTest = num_(raw.test_max_merchant_pages_per_run, num_(raw.max_merchant_pages_per_run, 1));
+  var adsPeriodsPerRunProd = num_(raw.ads_periods_per_run_prod, num_(raw.ads_periods_per_run, 1));
+  var adsPeriodsPerRunTest = num_(raw.test_ads_periods_per_run, 4);
+  var productsChunkSizeProd = num_(raw.products_chunk_size_prod, 250000);
+  var productsChunkSizeTest = num_(raw.test_products_chunk_size, num_(raw.products_chunk_size, 100));
   return {
     merchantId: String(raw.merchant_id || '').trim(),
     autoRegisterGcpProject: bool_(raw.auto_register_gcp_project, true),
     developerEmail: String(raw.developer_email || '').trim(),
     waitAfterGcpRegistrationSeconds: num_(raw.wait_after_gcp_registration_seconds, 0),
-    testMode: bool_(raw.pipeline_test_mode, false),
+    testMode: testMode,
     maxRunMinutes: num_(raw.max_run_minutes, 25),
     runLockMinutes: num_(raw.run_lock_minutes, 40),
-    merchantPageSize: num_(raw.merchant_api_page_size, 1000),
+    merchantPageSize: testMode ? merchantPageSizeTest : merchantPageSizeProd,
     merchantApiRetryCount: num_(raw.merchant_api_retry_count, 5),
     merchantApiRetrySleepSeconds: num_(raw.merchant_api_retry_sleep_seconds, 10),
-    merchantSnapshotTestRowLimit: num_(raw.merchant_snapshot_test_row_limit, 0),
+    merchantSnapshotTestRowLimit: testMode ? merchantSnapshotTestRowLimit : 0,
     runLogMaxRows: num_(raw.run_log_max_rows, 200),
     runLogMaxMessageChars: num_(raw.run_log_max_message_chars, 800),
     spreadsheetLocale: String(raw.spreadsheet_locale || 'en_US').trim(),
     merchantDataSourceIdFilter: listSetting_(raw.merchant_data_source_id_filter),
     merchantFeedLabelFilter: listSetting_(raw.merchant_feed_label_filter),
     merchantContentLanguageFilter: listSetting_(raw.merchant_content_language_filter),
-    maxMerchantPagesPerRun: bool_(raw.pipeline_test_mode, false) ? num_(raw.max_merchant_pages_per_run, 2) : num_(raw.max_merchant_pages_per_run_prod, 50),
-    adsPeriodsPerRun: num_(raw.ads_periods_per_run, 1),
-    productsChunkSize: bool_(raw.pipeline_test_mode, false) ? num_(raw.products_chunk_size, 5000) : num_(raw.products_chunk_size_prod, 250000),
+    maxMerchantPagesPerRun: testMode ? maxMerchantPagesPerRunTest : maxMerchantPagesPerRunProd,
+    adsPeriodsPerRun: testMode ? adsPeriodsPerRunTest : adsPeriodsPerRunProd,
+    productsChunkSize: testMode ? productsChunkSizeTest : productsChunkSizeProd,
     funnelStageOutputAttribute: String(raw.funnel_stage_output_attribute || 'custom_label_0').trim(),
     benchmarkOutputAttribute: String(raw.benchmark_output_attribute || 'custom_label_3').trim(),
     benchmarkLabelField: String(raw.benchmark_label_field || 'custom_label_4').trim(),
@@ -443,7 +461,7 @@ function readSettings_(sheet) {
     enableDashboard: bool_(raw.enable_dashboard, false),
     enablePreviousStateRead: bool_(raw.enable_previous_state_read, true),
     enableManagedSheetFormatting: bool_(raw.enable_managed_sheet_formatting, false),
-    forceRestartPipeline: bool_(raw.force_restart_pipeline, false)
+    forceRestartPipeline: bool_(raw.force_restart_pipeline, false) || (testMode && testForceRestart)
   };
 }
 
