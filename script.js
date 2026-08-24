@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-5';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dynamic-dashboard-2';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-6';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dynamic-dashboard-3';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1151,6 +1151,7 @@ function ensureDashboardRefreshControl_(sheet, label, checked) {
   sheet.getRange(1, 1).setValue(label);
   var checkboxCell = sheet.getRange(1, 2);
   checkboxCell.clearContent().clearDataValidations();
+  checkboxCell.clearFormat().setNumberFormat('General');
   checkboxCell.insertCheckboxes();
   setCheckboxBooleanValue_(sheet, 1, 2, checked === true);
   sheet.getRange(1, 3).setValue(DASHBOARD_LAYOUT_BUILD);
@@ -1165,7 +1166,7 @@ function ensureDashboardRefreshControl_(sheet, label, checked) {
 
 function setCheckboxBooleanValue_(sheet, row, column, value) {
   var boolValue = value === true;
-  sheet.getRange(row, column).setValue(boolValue);
+  sheet.getRange(row, column).setNumberFormat('General').setValue(boolValue);
   try {
     if (typeof Sheets === 'undefined' || !Sheets.Spreadsheets || !Sheets.Spreadsheets.batchUpdate) return;
     Sheets.Spreadsheets.batchUpdate({
