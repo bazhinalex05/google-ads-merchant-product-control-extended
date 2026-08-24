@@ -17,6 +17,7 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-2';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -558,7 +559,7 @@ function startStartupRun_(ss) {
   ensureRunStateHeader_(runState);
   var now = new Date();
   var runId = Utilities.formatDate(now, tz_(), 'yyyyMMdd-HHmmss') + '-' + Math.floor(Math.random() * 100000);
-  var row = appendRunLog_(runLog, runId, 'STARTUP', 'STARTED', 'Opened spreadsheet. Preparing sheets before pipeline dispatch.');
+  var row = appendRunLog_(runLog, runId, 'STARTUP', 'STARTED', 'Opened spreadsheet. SCRIPT_BUILD=' + SCRIPT_BUILD + '. Preparing sheets before pipeline dispatch.');
   return {
     ss: ss,
     sheets: { runLog: runLog, runState: runState },
@@ -974,6 +975,7 @@ function swapPublishedProductsSheet_(ctx) {
   var backupName = PRODUCTS_SHEET + '_Previous_' + Utilities.formatDate(new Date(), tz_(), 'yyyyMMddHHmmss');
   if (oldProducts) oldProducts.setName(backupName);
   publish.setName(PRODUCTS_SHEET);
+  safeShowSheet_(publish);
   ctx.sheets.products = publish;
   ss.setActiveSheet(publish);
   ss.moveActiveSheet(1);
@@ -1018,6 +1020,7 @@ function stageDashboard_(ctx) {
     heartbeat_at: iso_(new Date()),
     lock_until: ''
   });
+  Logger.log('[DASHBOARD_BUILD] SCRIPT_BUILD=' + SCRIPT_BUILD);
   buildDashboardData_(ctx);
   buildDashboard_(ctx);
   cleanupTransientWorkSheets_(ctx);
@@ -1083,7 +1086,7 @@ function buildDashboardData_(ctx) {
   var diagRows = ctx.sheets.productDiagnostics.getLastRow() > 1
     ? ctx.sheets.productDiagnostics.getRange(2, 1, ctx.sheets.productDiagnostics.getLastRow() - 1, 15).getValues()
     : [];
-  var rebuild = dashboardRefreshRequested_(sheet);
+  var rebuild = dashboardRefreshRequested_(sheet, 'Перебудувати DashboardData при наступному запуску');
   if (rebuild) sheet.clear();
   else sheet.getRange(2, 1, Math.max(1, sheet.getMaxRows() - 1), Math.min(11, sheet.getMaxColumns())).clearContent();
 
@@ -1098,7 +1101,7 @@ function buildDashboardData_(ctx) {
 function buildDashboard_(ctx) {
   var sheet = ctx.sheets.dashboard;
   ensureSheetColumns_(sheet, 12);
-  var rebuild = dashboardRefreshRequested_(sheet);
+  var rebuild = dashboardRefreshRequested_(sheet, 'Перебудувати Dashboard при наступному запуску');
   if (!rebuild) {
     ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', false);
     return;
@@ -1111,8 +1114,10 @@ function buildDashboard_(ctx) {
 }
 
 
-function dashboardRefreshRequested_(sheet) {
+function dashboardRefreshRequested_(sheet, expectedLabel) {
   if (sheet.getLastRow() < 2) return true;
+  var label = String(sheet.getRange(1, 1).getValue() || '');
+  if (label !== expectedLabel) return true;
   return bool_(sheet.getRange(1, 2).getValue(), true);
 }
 
