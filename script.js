@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-3';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-clean-dashboard-1';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-4';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dynamic-dashboard-1';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1043,8 +1043,8 @@ function stageDashboard_(ctx) {
     lock_until: ''
   });
   Logger.log('[DASHBOARD_BUILD] SCRIPT_BUILD=' + SCRIPT_BUILD);
-  buildDashboardData_(ctx);
-  buildDashboard_(ctx);
+  var dashboardModel = buildDashboardData_(ctx);
+  buildDashboard_(ctx, dashboardModel);
   cleanupTransientWorkSheets_(ctx);
   return { status: 'DONE', message: 'Dashboard built.' };
 }
@@ -1117,10 +1117,11 @@ function buildDashboardData_(ctx) {
   ensureDashboardRefreshControl_(sheet, 'Перебудувати DashboardData при наступному запуску', false);
   sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   if (rebuild) formatDashboardDataSheet_(sheet, rows.length);
+  return model;
 }
 
 
-function buildDashboard_(ctx) {
+function buildDashboard_(ctx, model) {
   var sheet = ctx.sheets.dashboard;
   ensureSheetColumns_(sheet, 12);
   var rebuild = dashboardRefreshRequested_(sheet, 'Перебудувати Dashboard при наступному запуску');
@@ -1130,9 +1131,9 @@ function buildDashboard_(ctx) {
   }
   sheet.clear();
   ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', false);
-  var rows = dashboardRows_();
+  var rows = dashboardRows_(model);
   sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
-  formatDashboardSheet_(sheet);
+  formatDashboardSheet_(sheet, rows.length);
 }
 
 
@@ -1199,7 +1200,6 @@ function dashboardModel_(ctx, diagRows, state) {
   var topProductTypes = [];
   for (var pathKey in productTypes) topProductTypes.push(finalizeDashboardAgg_(productTypes[pathKey]));
   topProductTypes.sort(function(a, b) { return b.cost - a.cost; });
-  if (topProductTypes.length > 10) topProductTypes = topProductTypes.slice(0, 10);
 
   return {
     state: state,
@@ -1263,43 +1263,70 @@ function dashboardDataRows_(model) {
 }
 
 
-function dashboardRows_() {
-  return [
-    ['Unified Merchant Funnel Product Control Extended V2', '', '', '', '', '', '', '', '', '', '', ''],
-    ['', '', '', '', '', '', '', '', '', '', '', ''],
-    ['Товари з конверсіями', 'Кількість товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', '', 'Етап', 'Витрати', 'Частка', ''],
-    ['без продажів', '=DashboardData!C17', '=DashboardData!D17', '=DashboardData!E17', '=DashboardData!F17', '=DashboardData!G17', '=DashboardData!H17', '', '=DashboardData!B29', '=DashboardData!H29', '=DashboardData!K29', ''],
-    ['продажі', '=DashboardData!C18', '=DashboardData!D18', '=DashboardData!E18', '=DashboardData!F18', '=DashboardData!G18', '=DashboardData!H18', '', '=DashboardData!B30', '=DashboardData!H30', '=DashboardData!K30', ''],
-    ['', '', '', '', '', '', '', '', '=DashboardData!B31', '=DashboardData!H31', '=DashboardData!K31', ''],
-    ['', '', '', '', '', '', '', '', '=DashboardData!B32', '=DashboardData!H32', '=DashboardData!K32', ''],
-    ['', '', '', '', '', '', '', '', '=DashboardData!B33', '=DashboardData!H33', '=DashboardData!K33', ''],
-    ['', '', '', '', '', '', '', '', '=DashboardData!B34', '=DashboardData!H34', '=DashboardData!K34', ''],
-    ['', '', '', '', '', '', '', '', '', '', '', ''],
-    ['Клікабельні товари', 'Кількість товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', '', 'Загалом', '', '', ''],
-    ['високі кліки', '=DashboardData!C21', '=DashboardData!D21', '=DashboardData!E21', '=DashboardData!F21', '=DashboardData!G21', '=DashboardData!H21', '', 'Товарів', '=DashboardData!C12', '', ''],
-    ['низькі кліки', '=DashboardData!C22', '=DashboardData!D22', '=DashboardData!E22', '=DashboardData!F22', '=DashboardData!G22', '=DashboardData!H22', '', 'ROAS', '=DashboardData!I12', '', ''],
-    ['', '', '', '', '', '', '', '', 'CPA', '=DashboardData!J12', '', ''],
-    ['', '', '', '', '', '', '', '', 'Цінність конв.', '=DashboardData!G12', '', ''],
-    ['Популярні в пошуку', 'Кількість товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', '', 'Витрати', '=DashboardData!H12', '', ''],
-    ['високі покази', '=DashboardData!C25', '=DashboardData!D25', '=DashboardData!E25', '=DashboardData!F25', '=DashboardData!G25', '=DashboardData!H25', '', '', '', '', ''],
-    ['низькі покази', '=DashboardData!C26', '=DashboardData!D26', '=DashboardData!E26', '=DashboardData!F26', '=DashboardData!G26', '=DashboardData!H26', '', 'Карантин', 'Товарів', 'Частка', ''],
-    ['', '', '', '', '', '', '', '', '=DashboardData!B37', '=DashboardData!C37', '=DashboardData!K37', ''],
-    ['', '', '', '', '', '', '', '', '=DashboardData!B38', '=DashboardData!C38', '=DashboardData!K38', ''],
-    ['', '', '', '', '', '', '', '', '=DashboardData!B39', '=DashboardData!C39', '=DashboardData!K39', ''],
-    ['', '', '', '', '', '', '', '', '=DashboardData!B40', '=DashboardData!C40', '=DashboardData!K40', ''],
-    ['', '', '', '', '', '', '', '', '', '', '', ''],
-    ['Топ product_type за витратами', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка', '', ''],
-    ['=DashboardData!B43', '=DashboardData!C43', '=DashboardData!D43', '=DashboardData!E43', '=DashboardData!F43', '=DashboardData!G43', '=DashboardData!H43', '=DashboardData!I43', '=DashboardData!J43', '=DashboardData!K43', '', ''],
-    ['=DashboardData!B44', '=DashboardData!C44', '=DashboardData!D44', '=DashboardData!E44', '=DashboardData!F44', '=DashboardData!G44', '=DashboardData!H44', '=DashboardData!I44', '=DashboardData!J44', '=DashboardData!K44', '', ''],
-    ['=DashboardData!B45', '=DashboardData!C45', '=DashboardData!D45', '=DashboardData!E45', '=DashboardData!F45', '=DashboardData!G45', '=DashboardData!H45', '=DashboardData!I45', '=DashboardData!J45', '=DashboardData!K45', '', ''],
-    ['=DashboardData!B46', '=DashboardData!C46', '=DashboardData!D46', '=DashboardData!E46', '=DashboardData!F46', '=DashboardData!G46', '=DashboardData!H46', '=DashboardData!I46', '=DashboardData!J46', '=DashboardData!K46', '', ''],
-    ['=DashboardData!B47', '=DashboardData!C47', '=DashboardData!D47', '=DashboardData!E47', '=DashboardData!F47', '=DashboardData!G47', '=DashboardData!H47', '=DashboardData!I47', '=DashboardData!J47', '=DashboardData!K47', '', ''],
-    ['=DashboardData!B48', '=DashboardData!C48', '=DashboardData!D48', '=DashboardData!E48', '=DashboardData!F48', '=DashboardData!G48', '=DashboardData!H48', '=DashboardData!I48', '=DashboardData!J48', '=DashboardData!K48', '', ''],
-    ['=DashboardData!B49', '=DashboardData!C49', '=DashboardData!D49', '=DashboardData!E49', '=DashboardData!F49', '=DashboardData!G49', '=DashboardData!H49', '=DashboardData!I49', '=DashboardData!J49', '=DashboardData!K49', '', ''],
-    ['=DashboardData!B50', '=DashboardData!C50', '=DashboardData!D50', '=DashboardData!E50', '=DashboardData!F50', '=DashboardData!G50', '=DashboardData!H50', '=DashboardData!I50', '=DashboardData!J50', '=DashboardData!K50', '', ''],
-    ['=DashboardData!B51', '=DashboardData!C51', '=DashboardData!D51', '=DashboardData!E51', '=DashboardData!F51', '=DashboardData!G51', '=DashboardData!H51', '=DashboardData!I51', '=DashboardData!J51', '=DashboardData!K51', '', ''],
-    ['=DashboardData!B52', '=DashboardData!C52', '=DashboardData!D52', '=DashboardData!E52', '=DashboardData!F52', '=DashboardData!G52', '=DashboardData!H52', '=DashboardData!I52', '=DashboardData!J52', '=DashboardData!K52', '', '']
+function dashboardRows_(model) {
+  var rows = [
+    dashboardWideRow_('Unified Merchant Funnel Product Control Extended V2'),
+    dashboardWideRow_(''),
+    ['Показник', 'Значення', '', '', '', '', '', '', '', '', '', ''],
+    ['Товарів', model.total.products, '', '', '', '', '', '', '', '', '', ''],
+    ['ROAS', model.total.roas, '', '', '', '', '', '', '', '', '', ''],
+    ['CPA', model.total.cpa, '', '', '', '', '', '', '', '', '', ''],
+    ['Цінність конв.', model.total.value, '', '', '', '', '', '', '', '', '', ''],
+    ['Витрати', model.total.cost, '', '', '', '', '', '', '', '', '', ''],
+    ['Виключено з реклами', model.excludedCount, '', '', '', '', '', '', '', '', '', ''],
+    ['Активний карантин', model.quarantineCount, '', '', '', '', '', '', '', '', '', ''],
+    dashboardWideRow_('')
   ];
+  dashboardAppendAggSection_(rows, 'Товари з конверсіями', model.salesSplit, model.total.products);
+  dashboardAppendAggSection_(rows, 'Клікабельні товари', model.clickSplit, model.total.products);
+  dashboardAppendAggSection_(rows, 'Популярні в пошуку', model.impressionSplit, model.total.products);
+  dashboardAppendAggSection_(rows, 'Етапи воронки', model.stages, model.total.products);
+  dashboardAppendQuarantineSection_(rows, model);
+  dashboardAppendAggSection_(rows, 'Product type за витратами', model.topProductTypes, model.total.products);
+  return rows;
+}
+
+
+function dashboardWideRow_(value) {
+  return [value, '', '', '', '', '', '', '', '', '', '', ''];
+}
+
+
+function dashboardHeaderRow_(title) {
+  return [title, 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка', '', ''];
+}
+
+
+function dashboardAppendAggSection_(rows, title, items, totalProducts) {
+  rows.push(dashboardHeaderRow_(title));
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    rows.push([
+      item.name,
+      item.products,
+      item.impressions,
+      item.clicks,
+      item.conversions,
+      item.value,
+      item.cost,
+      item.roas,
+      item.cpa,
+      totalProducts ? item.products / totalProducts : 0,
+      '',
+      ''
+    ]);
+  }
+  rows.push(dashboardWideRow_(''));
+}
+
+
+function dashboardAppendQuarantineSection_(rows, model) {
+  rows.push(['Карантин', 'Товарів', 'Частка', '', '', '', '', '', '', '', '', '']);
+  rows.push(['Усього активних', model.quarantine.active, model.total.products ? model.quarantine.active / model.total.products : 0, '', '', '', '', '', '', '', '', '']);
+  rows.push(['Кліки без продажів', model.quarantine.noSales, model.total.products ? model.quarantine.noSales / model.total.products : 0, '', '', '', '', '', '', '', '', '']);
+  rows.push(['Витрати > % ціни', model.quarantine.spend, model.total.products ? model.quarantine.spend / model.total.products : 0, '', '', '', '', '', '', '', '', '']);
+  rows.push(['Дорогий клік', model.quarantine.expensiveClick, model.total.products ? model.quarantine.expensiveClick / model.total.products : 0, '', '', '', '', '', '', '', '', '']);
+  rows.push(dashboardWideRow_(''));
 }
 
 
@@ -1386,40 +1413,44 @@ function formatDashboardDataSheet_(sheet, rowCount) {
 }
 
 
-function formatDashboardSheet_(sheet) {
+function formatDashboardSheet_(sheet, rowCount) {
   sheet.setFrozenRows(1);
-  sheet.setColumnWidth(1, 190);
-  sheet.setColumnWidths(2, 6, 112);
-  sheet.setColumnWidth(8, 24);
-  sheet.setColumnWidth(9, 180);
-  sheet.setColumnWidths(10, 2, 112);
+  sheet.setColumnWidth(1, 260);
+  sheet.setColumnWidths(2, 9, 112);
+  sheet.setColumnWidth(11, 24);
   sheet.setColumnWidth(12, 24);
-  sheet.getRange(2, 1, 34, 12).setWrap(false).setVerticalAlignment('middle');
+  sheet.getRange(2, 1, rowCount, 12).setWrap(false).setVerticalAlignment('middle');
   sheet.getRange(2, 1, 1, 12).setFontSize(13).setFontWeight('bold');
-  var headerRows = [4, 12, 17, 25];
-  for (var i = 0; i < headerRows.length; i++) {
-    sheet.getRange(headerRows[i], 1, 1, 7)
-      .setBackground('#4a86e8')
-      .setFontColor('#ffffff')
-      .setFontWeight('bold')
-      .setHorizontalAlignment('center');
+  sheet.getRange(2, 1, rowCount, 12).setBorder(true, true, true, true, true, true, '#b7c9e8', SpreadsheetApp.BorderStyle.SOLID);
+  sheet.getRange(2, 1, rowCount, 12).setBackground('#ffffff');
+  var headerTitles = {
+    'Показник': true,
+    'Товари з конверсіями': true,
+    'Клікабельні товари': true,
+    'Популярні в пошуку': true,
+    'Етапи воронки': true,
+    'Карантин': true,
+    'Product type за витратами': true
+  };
+  var firstCol = sheet.getRange(2, 1, rowCount, 1).getValues();
+  for (var i = 0; i < firstCol.length; i++) {
+    var row = i + 2;
+    var label = String(firstCol[i][0] || '');
+    if (headerTitles[label]) {
+      sheet.getRange(row, 1, 1, 10)
+        .setBackground('#4a86e8')
+        .setFontColor('#ffffff')
+        .setFontWeight('bold')
+        .setHorizontalAlignment('center');
+    } else if (label) {
+      sheet.getRange(row, 1, 1, 10).setBackground('#eef4ff');
+    }
   }
-  sheet.getRange(4, 9, 1, 3).setBackground('#4a86e8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
-  sheet.getRange(12, 9, 1, 3).setBackground('#4a86e8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
-  sheet.getRange(19, 9, 1, 3).setBackground('#4a86e8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
-  sheet.getRange(5, 1, 2, 7).setBackground('#d9e7fb');
-  sheet.getRange(13, 1, 2, 7).setBackground('#d9e7fb');
-  sheet.getRange(18, 1, 2, 7).setBackground('#d9e7fb');
-  sheet.getRange(26, 1, 10, 11).setBackground('#eef4ff');
-  sheet.getRange(2, 1, 34, 12).setBorder(true, true, true, true, true, true, '#b7c9e8', SpreadsheetApp.BorderStyle.SOLID);
-  sheet.getRange(5, 6, 31, 2).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(5, 10, 6, 1).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(13, 10, 4, 1).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(19, 11, 4, 1).setNumberFormat('0.0%');
-  sheet.getRange(26, 6, 10, 2).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(26, 8, 10, 1).setNumberFormat('0.00');
-  sheet.getRange(26, 9, 10, 1).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(26, 10, 10, 1).setNumberFormat('0.0%');
+  sheet.getRange(2, 2, rowCount, 9).setNumberFormat('0.##');
+  sheet.getRange(2, 6, rowCount, 2).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(2, 8, rowCount, 1).setNumberFormat('0.00');
+  sheet.getRange(2, 9, rowCount, 1).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(2, 10, rowCount, 1).setNumberFormat('0.0%');
 }
 
 
