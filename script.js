@@ -1078,62 +1078,309 @@ function buildProductDiagnostics_(ctx) {
 
 function buildDashboardData_(ctx) {
   var sheet = ctx.sheets.dashboardData;
-  sheet.clearContents();
+  ensureSheetColumns_(sheet, 11);
   var state = readState_(ctx.sheets.runState);
   var diagRows = ctx.sheets.productDiagnostics.getLastRow() > 1
     ? ctx.sheets.productDiagnostics.getRange(2, 1, ctx.sheets.productDiagnostics.getLastRow() - 1, 15).getValues()
     : [];
-  var stageCounts = {};
-  var excludedCount = 0;
-  var quarantineCount = 0;
-  for (var i = 0; i < diagRows.length; i++) {
-    var stage = String(diagRows[i][5] || 'unknown');
-    stageCounts[stage] = (stageCounts[stage] || 0) + 1;
-    if (diagRows[i][12] === true || String(diagRows[i][12]).toUpperCase() === 'TRUE') quarantineCount++;
-    if (diagRows[i][13] || diagRows[i][14]) excludedCount++;
-  }
-  var rows = [
-    ['section', 'metric', 'value'],
-    ['pipeline', 'pipeline_status', state.pipeline_status || ''],
-    ['pipeline', 'stage', state.stage || ''],
-    ['pipeline', 'last_successful_publish_at', state.last_successful_publish_at || ''],
-    ['merchant', 'merchant_rows_written', state.merchant_rows_written || 0],
-    ['merchant', 'merchant_snapshot_truncated_at', state.merchant_snapshot_truncated_at || ''],
-    ['ads', 'ads_period_index', state.ads_period_index || 0],
-    ['products', 'products_draft_rows', state.products_draft_rows || 0],
-    ['products', 'publish_rows_written', state.publish_rows_written || 0],
-    ['diagnostics', 'diagnostic_rows', diagRows.length],
-    ['diagnostics', 'excluded_products', excludedCount],
-    ['diagnostics', 'quarantine_products', quarantineCount],
-    ['product_types', 'product_type_paths', countProductTypePaths_(ctx.sheets.productTypes)],
-    ['quarantine', 'registry_rows', Math.max(0, ctx.sheets.quarantineRegistry.getLastRow() - 1)],
-    ['stats', 'ads_stats_rows', Math.max(0, ctx.sheets.adsStatsSnapshot.getLastRow() - 1)]
-  ];
-  for (var key in stageCounts) rows.push(['funnel_stage', key, stageCounts[key]]);
-  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), rows.length), 3).setNumberFormat('@');
-  sheet.getRange(1, 1, rows.length, 3).setValues(rows);
+  var rebuild = dashboardRefreshRequested_(sheet);
+  if (rebuild) sheet.clear();
+  else sheet.getRange(2, 1, Math.max(1, sheet.getMaxRows() - 1), Math.min(11, sheet.getMaxColumns())).clearContent();
+
+  var model = dashboardModel_(ctx, diagRows, state);
+  var rows = dashboardDataRows_(model);
+  ensureDashboardRefreshControl_(sheet, 'Перебудувати DashboardData при наступному запуску', false);
+  sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+  if (rebuild) formatDashboardDataSheet_(sheet, rows.length);
 }
 
 
 function buildDashboard_(ctx) {
   var sheet = ctx.sheets.dashboard;
-  sheet.clearContents();
-  var state = readState_(ctx.sheets.runState);
+  ensureSheetColumns_(sheet, 12);
+  var rebuild = dashboardRefreshRequested_(sheet);
+  if (!rebuild) {
+    ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', false);
+    return;
+  }
+  sheet.clear();
+  ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', false);
+  var rows = dashboardRows_();
+  sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+  formatDashboardSheet_(sheet);
+}
+
+
+function dashboardRefreshRequested_(sheet) {
+  if (sheet.getLastRow() < 2) return true;
+  return bool_(sheet.getRange(1, 2).getValue(), true);
+}
+
+
+function ensureDashboardRefreshControl_(sheet, label, checked) {
+  sheet.getRange(1, 1).setValue(label);
+  sheet.getRange(1, 2).insertCheckboxes();
+  sheet.getRange(1, 2).setValue(checked === true);
+  try {
+    sheet.hideRows(1);
+  } catch (e) {
+    Logger.log('Dashboard refresh control row hide skipped: ' + String(e));
+  }
+}
+
+
+function dashboardModel_(ctx, diagRows, state) {
+  var total = emptyDashboardAgg_('Загалом');
+  var sales = emptyDashboardAgg_('продажі');
+  var noSales = emptyDashboardAgg_('без продажів');
+  var highClicks = emptyDashboardAgg_('високі кліки');
+  var lowClicks = emptyDashboardAgg_('низькі кліки');
+  var highImpressions = emptyDashboardAgg_('високі покази');
+  var lowImpressions = emptyDashboardAgg_('низькі покази');
+  var stages = {};
+  var productTypes = {};
+  var excludedCount = 0;
+  var quarantineCount = 0;
+
+  for (var i = 0; i < diagRows.length; i++) {
+    var row = diagRows[i];
+    var stage = String(row[5] || '6 без стат');
+    var path = String(row[4] || '(empty)').trim() || '(empty)';
+    var aggRow = dashboardAggRow_(row);
+    addDashboardAgg_(total, aggRow);
+    addDashboardAgg_(stages[stage] || (stages[stage] = emptyDashboardAgg_(stage)), aggRow);
+    addDashboardAgg_(productTypes[path] || (productTypes[path] = emptyDashboardAgg_(path)), aggRow);
+    if (aggRow.conversions > 0) addDashboardAgg_(sales, aggRow);
+    else addDashboardAgg_(noSales, aggRow);
+    if (aggRow.conversions > 0 || stage.indexOf('вк') !== -1) addDashboardAgg_(highClicks, aggRow);
+    else addDashboardAgg_(lowClicks, aggRow);
+    if (aggRow.conversions > 0 || stage.indexOf('вп') !== -1) addDashboardAgg_(highImpressions, aggRow);
+    else addDashboardAgg_(lowImpressions, aggRow);
+    if (row[12] === true || String(row[12]).toUpperCase() === 'TRUE') quarantineCount++;
+    if (row[13] || row[14]) excludedCount++;
+  }
+
+  var quarantine = dashboardQuarantineModel_(ctx.sheets.quarantineRegistry);
+  var topProductTypes = [];
+  for (var pathKey in productTypes) topProductTypes.push(finalizeDashboardAgg_(productTypes[pathKey]));
+  topProductTypes.sort(function(a, b) { return b.cost - a.cost; });
+  if (topProductTypes.length > 10) topProductTypes = topProductTypes.slice(0, 10);
+
+  return {
+    state: state,
+    total: finalizeDashboardAgg_(total),
+    salesSplit: [finalizeDashboardAgg_(noSales), finalizeDashboardAgg_(sales)],
+    clickSplit: [finalizeDashboardAgg_(highClicks), finalizeDashboardAgg_(lowClicks)],
+    impressionSplit: [finalizeDashboardAgg_(highImpressions), finalizeDashboardAgg_(lowImpressions)],
+    stages: dashboardStageAggs_(stages),
+    quarantine: quarantine,
+    topProductTypes: topProductTypes,
+    excludedCount: excludedCount,
+    quarantineCount: quarantineCount,
+    productTypePathCount: countProductTypePaths_(ctx.sheets.productTypes),
+    adsStatsRows: Math.max(0, ctx.sheets.adsStatsSnapshot.getLastRow() - 1)
+  };
+}
+
+
+function dashboardDataRows_(model) {
+  var blank = ['', '', '', '', '', '', '', '', '', '', ''];
   var rows = [
-    ['Unified Merchant Funnel Product Control Extended V2', ''],
-    ['pipeline_status', state.pipeline_status || ''],
-    ['stage', state.stage || ''],
-    ['last_completed_stage', state.last_completed_stage || ''],
-    ['last_successful_publish_at', state.last_successful_publish_at || ''],
-    ['merchant_rows_written', state.merchant_rows_written || 0],
-    ['products_draft_rows', state.products_draft_rows || 0],
-    ['publish_rows_written', state.publish_rows_written || 0],
-    ['product_diagnostics_rows', Math.max(0, ctx.sheets.productDiagnostics.getLastRow() - 1)],
-    ['product_type_paths', countProductTypePaths_(ctx.sheets.productTypes)],
-    ['quarantine_registry_rows', Math.max(0, ctx.sheets.quarantineRegistry.getLastRow() - 1)]
+    ['section', 'item', 'products', 'impressions', 'clicks', 'conversions', 'conversion_value', 'cost', 'roas', 'cpa', 'share'],
+    ['pipeline', 'pipeline_status', model.state.pipeline_status || '', '', '', '', '', '', '', '', ''],
+    ['pipeline', 'stage', model.state.stage || '', '', '', '', '', '', '', '', ''],
+    ['pipeline', 'last_successful_publish_at', model.state.last_successful_publish_at || '', '', '', '', '', '', '', '', ''],
+    ['pipeline', 'merchant_rows_written', num_(model.state.merchant_rows_written, 0), '', '', '', '', '', '', '', ''],
+    ['pipeline', 'products_draft_rows', num_(model.state.products_draft_rows, 0), '', '', '', '', '', '', '', ''],
+    ['pipeline', 'products_total', num_(model.state.products_total, 0), '', '', '', '', '', '', '', ''],
+    ['pipeline', 'product_type_paths', model.productTypePathCount, '', '', '', '', '', '', '', ''],
+    ['pipeline', 'ads_stats_rows', model.adsStatsRows, '', '', '', '', '', '', '', ''],
+    blank,
+    ['summary', 'Загалом', model.total.products, model.total.impressions, model.total.clicks, model.total.conversions, model.total.value, model.total.cost, model.total.roas, model.total.cpa, 1],
+    ['summary', 'Виключено з реклами', model.excludedCount, '', '', '', '', '', '', '', model.total.products ? model.excludedCount / model.total.products : 0],
+    ['summary', 'Активний карантин', model.quarantineCount, '', '', '', '', '', '', '', model.total.products ? model.quarantineCount / model.total.products : 0],
+    blank,
+    ['sales_split', 'item', 'products', 'impressions', 'clicks', 'conversions', 'conversion_value', 'cost', 'roas', 'cpa', 'share'],
+    dashboardDataAggRow_('sales_split', model.salesSplit[0], model.total.products),
+    dashboardDataAggRow_('sales_split', model.salesSplit[1], model.total.products),
+    blank,
+    ['click_split', 'item', 'products', 'impressions', 'clicks', 'conversions', 'conversion_value', 'cost', 'roas', 'cpa', 'share'],
+    dashboardDataAggRow_('click_split', model.clickSplit[0], model.total.products),
+    dashboardDataAggRow_('click_split', model.clickSplit[1], model.total.products),
+    blank,
+    ['impression_split', 'item', 'products', 'impressions', 'clicks', 'conversions', 'conversion_value', 'cost', 'roas', 'cpa', 'share'],
+    dashboardDataAggRow_('impression_split', model.impressionSplit[0], model.total.products),
+    dashboardDataAggRow_('impression_split', model.impressionSplit[1], model.total.products),
+    blank,
+    ['funnel_stage', 'item', 'products', 'impressions', 'clicks', 'conversions', 'conversion_value', 'cost', 'roas', 'cpa', 'share']
   ];
-  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), rows.length), 2).setNumberFormat('@');
-  sheet.getRange(1, 1, rows.length, 2).setValues(rows);
+  for (var i = 0; i < model.stages.length; i++) rows.push(dashboardDataAggRow_('funnel_stage', model.stages[i], model.total.products));
+  rows.push(blank);
+  rows.push(['quarantine', 'item', 'products', 'active_until', '', '', '', '', '', '', 'share']);
+  rows.push(['quarantine', 'Усього активних', model.quarantine.active, '', '', '', '', '', '', '', model.total.products ? model.quarantine.active / model.total.products : 0]);
+  rows.push(['quarantine', 'Кліки без продажів', model.quarantine.noSales, '', '', '', '', '', '', '', model.total.products ? model.quarantine.noSales / model.total.products : 0]);
+  rows.push(['quarantine', 'Витрати > % ціни', model.quarantine.spend, '', '', '', '', '', '', '', model.total.products ? model.quarantine.spend / model.total.products : 0]);
+  rows.push(['quarantine', 'Дорогий клік', model.quarantine.expensiveClick, '', '', '', '', '', '', '', model.total.products ? model.quarantine.expensiveClick / model.total.products : 0]);
+  rows.push(blank);
+  rows.push(['product_type_cost', 'item', 'products', 'impressions', 'clicks', 'conversions', 'conversion_value', 'cost', 'roas', 'cpa', 'share']);
+  for (var j = 0; j < model.topProductTypes.length; j++) rows.push(dashboardDataAggRow_('product_type_cost', model.topProductTypes[j], model.total.products));
+  return rows;
+}
+
+
+function dashboardRows_() {
+  return [
+    ['Unified Merchant Funnel Product Control Extended V2', '', '', '', '', '', '', '', '', '', '', ''],
+    ['', '', '', '', '', '', '', '', '', '', '', ''],
+    ['Товари з конверсіями', 'Кількість товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', '', 'Етап', 'Витрати', 'Частка', ''],
+    ['без продажів', '=DashboardData!C17', '=DashboardData!D17', '=DashboardData!E17', '=DashboardData!F17', '=DashboardData!G17', '=DashboardData!H17', '', '=DashboardData!B29', '=DashboardData!H29', '=IFERROR(SPARKLINE(J5,{"charttype","bar";"max",MAX($J$5:$J$10);"color1","#4a86e8"}),"")', ''],
+    ['продажі', '=DashboardData!C18', '=DashboardData!D18', '=DashboardData!E18', '=DashboardData!F18', '=DashboardData!G18', '=DashboardData!H18', '', '=DashboardData!B30', '=DashboardData!H30', '=IFERROR(SPARKLINE(J6,{"charttype","bar";"max",MAX($J$5:$J$10);"color1","#4a86e8"}),"")', ''],
+    ['', '', '', '', '', '', '', '', '=DashboardData!B31', '=DashboardData!H31', '=IFERROR(SPARKLINE(J7,{"charttype","bar";"max",MAX($J$5:$J$10);"color1","#4a86e8"}),"")', ''],
+    ['', '', '', '', '', '', '', '', '=DashboardData!B32', '=DashboardData!H32', '=IFERROR(SPARKLINE(J8,{"charttype","bar";"max",MAX($J$5:$J$10);"color1","#4a86e8"}),"")', ''],
+    ['', '', '', '', '', '', '', '', '=DashboardData!B33', '=DashboardData!H33', '=IFERROR(SPARKLINE(J9,{"charttype","bar";"max",MAX($J$5:$J$10);"color1","#4a86e8"}),"")', ''],
+    ['', '', '', '', '', '', '', '', '=DashboardData!B34', '=DashboardData!H34', '=IFERROR(SPARKLINE(J10,{"charttype","bar";"max",MAX($J$5:$J$10);"color1","#4a86e8"}),"")', ''],
+    ['', '', '', '', '', '', '', '', '', '', '', ''],
+    ['Клікабельні товари', 'Кількість товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', '', 'Загалом', '', '', ''],
+    ['високі кліки', '=DashboardData!C21', '=DashboardData!D21', '=DashboardData!E21', '=DashboardData!F21', '=DashboardData!G21', '=DashboardData!H21', '', 'Товарів', '=DashboardData!C12', '', ''],
+    ['низькі кліки', '=DashboardData!C22', '=DashboardData!D22', '=DashboardData!E22', '=DashboardData!F22', '=DashboardData!G22', '=DashboardData!H22', '', 'ROAS', '=DashboardData!I12', '', ''],
+    ['', '', '', '', '', '', '', '', 'CPA', '=DashboardData!J12', '', ''],
+    ['', '', '', '', '', '', '', '', 'Цінність конв.', '=DashboardData!G12', '', ''],
+    ['Популярні в пошуку', 'Кількість товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', '', 'Витрати', '=DashboardData!H12', '', ''],
+    ['високі покази', '=DashboardData!C25', '=DashboardData!D25', '=DashboardData!E25', '=DashboardData!F25', '=DashboardData!G25', '=DashboardData!H25', '', '', '', '', ''],
+    ['низькі покази', '=DashboardData!C26', '=DashboardData!D26', '=DashboardData!E26', '=DashboardData!F26', '=DashboardData!G26', '=DashboardData!H26', '', 'Карантин', 'Товарів', 'Частка', ''],
+    ['', '', '', '', '', '', '', '', '=DashboardData!B37', '=DashboardData!C37', '=DashboardData!K37', ''],
+    ['', '', '', '', '', '', '', '', '=DashboardData!B38', '=DashboardData!C38', '=DashboardData!K38', ''],
+    ['', '', '', '', '', '', '', '', '=DashboardData!B39', '=DashboardData!C39', '=DashboardData!K39', ''],
+    ['', '', '', '', '', '', '', '', '=DashboardData!B40', '=DashboardData!C40', '=DashboardData!K40', ''],
+    ['', '', '', '', '', '', '', '', '', '', '', ''],
+    ['Топ product_type за витратами', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка', '', ''],
+    ['=DashboardData!B43', '=DashboardData!C43', '=DashboardData!D43', '=DashboardData!E43', '=DashboardData!F43', '=DashboardData!G43', '=DashboardData!H43', '=DashboardData!I43', '=DashboardData!J43', '=DashboardData!K43', '=IFERROR(SPARKLINE(G26,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
+    ['=DashboardData!B44', '=DashboardData!C44', '=DashboardData!D44', '=DashboardData!E44', '=DashboardData!F44', '=DashboardData!G44', '=DashboardData!H44', '=DashboardData!I44', '=DashboardData!J44', '=DashboardData!K44', '=IFERROR(SPARKLINE(G27,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
+    ['=DashboardData!B45', '=DashboardData!C45', '=DashboardData!D45', '=DashboardData!E45', '=DashboardData!F45', '=DashboardData!G45', '=DashboardData!H45', '=DashboardData!I45', '=DashboardData!J45', '=DashboardData!K45', '=IFERROR(SPARKLINE(G28,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
+    ['=DashboardData!B46', '=DashboardData!C46', '=DashboardData!D46', '=DashboardData!E46', '=DashboardData!F46', '=DashboardData!G46', '=DashboardData!H46', '=DashboardData!I46', '=DashboardData!J46', '=DashboardData!K46', '=IFERROR(SPARKLINE(G29,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
+    ['=DashboardData!B47', '=DashboardData!C47', '=DashboardData!D47', '=DashboardData!E47', '=DashboardData!F47', '=DashboardData!G47', '=DashboardData!H47', '=DashboardData!I47', '=DashboardData!J47', '=DashboardData!K47', '=IFERROR(SPARKLINE(G30,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
+    ['=DashboardData!B48', '=DashboardData!C48', '=DashboardData!D48', '=DashboardData!E48', '=DashboardData!F48', '=DashboardData!G48', '=DashboardData!H48', '=DashboardData!I48', '=DashboardData!J48', '=DashboardData!K48', '=IFERROR(SPARKLINE(G31,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
+    ['=DashboardData!B49', '=DashboardData!C49', '=DashboardData!D49', '=DashboardData!E49', '=DashboardData!F49', '=DashboardData!G49', '=DashboardData!H49', '=DashboardData!I49', '=DashboardData!J49', '=DashboardData!K49', '=IFERROR(SPARKLINE(G32,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
+    ['=DashboardData!B50', '=DashboardData!C50', '=DashboardData!D50', '=DashboardData!E50', '=DashboardData!F50', '=DashboardData!G50', '=DashboardData!H50', '=DashboardData!I50', '=DashboardData!J50', '=DashboardData!K50', '=IFERROR(SPARKLINE(G33,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
+    ['=DashboardData!B51', '=DashboardData!C51', '=DashboardData!D51', '=DashboardData!E51', '=DashboardData!F51', '=DashboardData!G51', '=DashboardData!H51', '=DashboardData!I51', '=DashboardData!J51', '=DashboardData!K51', '=IFERROR(SPARKLINE(G34,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
+    ['=DashboardData!B52', '=DashboardData!C52', '=DashboardData!D52', '=DashboardData!E52', '=DashboardData!F52', '=DashboardData!G52', '=DashboardData!H52', '=DashboardData!I52', '=DashboardData!J52', '=DashboardData!K52', '=IFERROR(SPARKLINE(G35,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', '']
+  ];
+}
+
+
+function emptyDashboardAgg_(name) {
+  return { name: name, products: 0, impressions: 0, clicks: 0, cost: 0, conversions: 0, value: 0 };
+}
+
+
+function dashboardAggRow_(row) {
+  return {
+    products: 1,
+    impressions: num_(row[6], 0),
+    clicks: num_(row[7], 0),
+    cost: num_(row[8], 0),
+    conversions: num_(row[9], 0),
+    value: num_(row[10], 0)
+  };
+}
+
+
+function addDashboardAgg_(target, src) {
+  target.products += num_(src.products, 0);
+  target.impressions += num_(src.impressions, 0);
+  target.clicks += num_(src.clicks, 0);
+  target.cost += num_(src.cost, 0);
+  target.conversions += num_(src.conversions, 0);
+  target.value += num_(src.value, 0);
+}
+
+
+function finalizeDashboardAgg_(agg) {
+  agg.roas = agg.cost > 0 ? agg.value / agg.cost : 0;
+  agg.cpa = agg.conversions > 0 ? agg.cost / agg.conversions : 0;
+  return agg;
+}
+
+
+function dashboardDataAggRow_(section, agg, totalProducts) {
+  return [section, agg.name, agg.products, agg.impressions, agg.clicks, agg.conversions, agg.value, agg.cost, agg.roas, agg.cpa, totalProducts ? agg.products / totalProducts : 0];
+}
+
+
+function dashboardStageAggs_(stages) {
+  var order = ['1 продажі', '2 вк+вп', '3 вк+нп', '4 нк+вп', '5 нк+нп', '6 без стат'];
+  var out = [];
+  for (var i = 0; i < order.length; i++) out.push(finalizeDashboardAgg_(stages[order[i]] || emptyDashboardAgg_(order[i])));
+  return out;
+}
+
+
+function dashboardQuarantineModel_(sheet) {
+  var today = dateOnly_(new Date());
+  var registry = readQuarantineRegistry_(sheet);
+  var out = { active: 0, noSales: 0, spend: 0, expensiveClick: 0 };
+  for (var id in registry) {
+    var r = registry[id];
+    if (isActiveDate_(r.active_until, today)) out.active++;
+    if (isActiveDate_(r.no_sales_until, today)) out.noSales++;
+    if (isActiveDate_(r.spend_until, today)) out.spend++;
+    if (isActiveDate_(r.expensive_click_until, today)) out.expensiveClick++;
+  }
+  return out;
+}
+
+
+function formatDashboardDataSheet_(sheet, rowCount) {
+  sheet.setFrozenRows(1);
+  sheet.setColumnWidths(1, 2, 180);
+  sheet.setColumnWidths(3, 9, 110);
+  sheet.getRange(2, 1, rowCount, 11).setWrap(false).setVerticalAlignment('middle');
+  sheet.getRange(2, 1, rowCount, 11).setNumberFormat('0.##');
+  sheet.getRange(2, 7, rowCount, 2).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(2, 9, rowCount, 1).setNumberFormat('0.00');
+  sheet.getRange(2, 10, rowCount, 1).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(2, 11, rowCount, 1).setNumberFormat('0.0%');
+  var headerRows = [2, 16, 20, 24, 28, 36, 42];
+  for (var i = 0; i < headerRows.length; i++) {
+    sheet.getRange(headerRows[i], 1, 1, 11)
+      .setBackground('#4a86e8')
+      .setFontColor('#ffffff')
+      .setFontWeight('bold')
+      .setHorizontalAlignment('center');
+  }
+}
+
+
+function formatDashboardSheet_(sheet) {
+  sheet.setFrozenRows(1);
+  sheet.setColumnWidths(1, 7, 118);
+  sheet.setColumnWidths(9, 3, 120);
+  sheet.getRange(2, 1, 34, 12).setWrap(false).setVerticalAlignment('middle');
+  sheet.getRange(2, 1, 1, 12).setFontSize(13).setFontWeight('bold');
+  var headerRows = [4, 12, 17, 25];
+  for (var i = 0; i < headerRows.length; i++) {
+    sheet.getRange(headerRows[i], 1, 1, 7)
+      .setBackground('#4a86e8')
+      .setFontColor('#ffffff')
+      .setFontWeight('bold')
+      .setHorizontalAlignment('center');
+  }
+  sheet.getRange(4, 9, 1, 3).setBackground('#4a86e8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
+  sheet.getRange(12, 9, 1, 3).setBackground('#4a86e8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
+  sheet.getRange(19, 9, 1, 3).setBackground('#4a86e8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
+  sheet.getRange(5, 1, 2, 7).setBackground('#d9e7fb');
+  sheet.getRange(13, 1, 2, 7).setBackground('#d9e7fb');
+  sheet.getRange(18, 1, 2, 7).setBackground('#d9e7fb');
+  sheet.getRange(26, 1, 10, 11).setBackground('#eef4ff');
+  sheet.getRange(2, 1, 34, 12).setBorder(true, true, true, true, true, true, '#b7c9e8', SpreadsheetApp.BorderStyle.SOLID);
+  sheet.getRange(5, 6, 31, 2).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(5, 10, 6, 1).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(13, 10, 4, 1).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(19, 11, 4, 1).setNumberFormat('0.0%');
+  sheet.getRange(26, 6, 10, 2).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(26, 8, 10, 1).setNumberFormat('0.00');
+  sheet.getRange(26, 9, 10, 1).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(26, 10, 10, 1).setNumberFormat('0.0%');
 }
 
 
@@ -1898,8 +2145,8 @@ function compactManagedSheetGrids_(sheets, settings) {
   ensureSheetColumns_(sheets.settings, 3);
   ensureSheetColumns_(sheets.productTypes, 18);
   ensureSheetColumns_(sheets.productDiagnostics, 15);
-  ensureSheetColumns_(sheets.dashboard, 3);
-  ensureSheetColumns_(sheets.dashboardData, 3);
+  ensureSheetColumns_(sheets.dashboard, 12);
+  ensureSheetColumns_(sheets.dashboardData, 11);
   ensureSheetColumns_(sheets.quarantineRegistry, 8);
   ensureSheetColumns_(sheets.quarantineLog, 4);
   ensureSheetColumns_(sheets.runState, 2);
