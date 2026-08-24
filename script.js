@@ -906,6 +906,13 @@ function stagePublishProducts_(ctx) {
   }
 
 
+  if (ctx.settings.testMode) {
+    directPublishProductsForTest_(ctx, cols);
+    advanceStage_(ctx, 'PRODUCT_DIAGNOSTICS_BUILD');
+    return { status: 'DONE', message: 'Products published directly in test mode. Rows=' + draftRows };
+  }
+
+
   logProgress_(ctx, 'PUBLISH_PRODUCTS', 'CHECKPOINT', 'Publish work copied. Swapping Products sheet. Rows=' + written);
   swapPublishedProductsSheet_(ctx);
   Logger.log('[PUBLISH_PRODUCTS] Products sheet swapped. Updating final publish state.');
@@ -929,6 +936,20 @@ function stagePublishProducts_(ctx) {
   }
   if (!finalAdvanceDone) return { status: 'PARTIAL', message: 'Products published. Stage advance deferred after Sheets timeout. Rows=' + draftRows };
   return { status: 'DONE', message: 'Products published. Rows=' + draftRows };
+}
+
+
+function directPublishProductsForTest_(ctx, colCount) {
+  var products = ctx.sheets.products;
+  var publish = ctx.sheets.productsPublish;
+  var rowCount = publish.getLastRow();
+  clearBelowHeader_(products);
+  var values = publish.getRange(1, 1, rowCount, colCount).getValues();
+  products.getRange(1, 1, rowCount, colCount).setValues(values);
+  safeShowSheet_(products);
+  ensureProductsFirst_(ctx.ss, products);
+  clearBelowHeader_(publish);
+  logProgress_(ctx, 'PUBLISH_PRODUCTS', 'CHECKPOINT', 'Direct test publish completed. Rows=' + Math.max(0, rowCount - 1));
 }
 
 
