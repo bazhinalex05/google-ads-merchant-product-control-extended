@@ -17,7 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-2';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-3';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-clean-dashboard-1';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1139,14 +1140,22 @@ function dashboardRefreshRequested_(sheet, expectedLabel) {
   if (sheet.getLastRow() < 2) return true;
   var label = String(sheet.getRange(1, 1).getValue() || '');
   if (label !== expectedLabel) return true;
+  var layoutBuild = String(sheet.getRange(1, 3).getValue() || '');
+  if (layoutBuild !== DASHBOARD_LAYOUT_BUILD) return true;
   return bool_(sheet.getRange(1, 2).getValue(), true);
 }
 
 
 function ensureDashboardRefreshControl_(sheet, label, checked) {
   sheet.getRange(1, 1).setValue(label);
-  sheet.getRange(1, 2).insertCheckboxes();
-  sheet.getRange(1, 2).setValue(checked === true);
+  var checkboxRule = SpreadsheetApp.newDataValidation().requireCheckbox().build();
+  sheet.getRange(1, 2)
+    .clearContent()
+    .clearDataValidations()
+    .setDataValidation(checkboxRule)
+    .setValue(checked === true);
+  sheet.getRange(1, 3).setValue(DASHBOARD_LAYOUT_BUILD);
+  sheet.getRange(1, 1, 1, 3).setBackground('#f3f6fb').setFontColor('#333333').setFontWeight('normal');
   try {
     sheet.hideRows(1);
   } catch (e) {
@@ -1259,12 +1268,12 @@ function dashboardRows_() {
     ['Unified Merchant Funnel Product Control Extended V2', '', '', '', '', '', '', '', '', '', '', ''],
     ['', '', '', '', '', '', '', '', '', '', '', ''],
     ['Товари з конверсіями', 'Кількість товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', '', 'Етап', 'Витрати', 'Частка', ''],
-    ['без продажів', '=DashboardData!C17', '=DashboardData!D17', '=DashboardData!E17', '=DashboardData!F17', '=DashboardData!G17', '=DashboardData!H17', '', '=DashboardData!B29', '=DashboardData!H29', '=IFERROR(SPARKLINE(J5,{"charttype","bar";"max",MAX($J$5:$J$10);"color1","#4a86e8"}),"")', ''],
-    ['продажі', '=DashboardData!C18', '=DashboardData!D18', '=DashboardData!E18', '=DashboardData!F18', '=DashboardData!G18', '=DashboardData!H18', '', '=DashboardData!B30', '=DashboardData!H30', '=IFERROR(SPARKLINE(J6,{"charttype","bar";"max",MAX($J$5:$J$10);"color1","#4a86e8"}),"")', ''],
-    ['', '', '', '', '', '', '', '', '=DashboardData!B31', '=DashboardData!H31', '=IFERROR(SPARKLINE(J7,{"charttype","bar";"max",MAX($J$5:$J$10);"color1","#4a86e8"}),"")', ''],
-    ['', '', '', '', '', '', '', '', '=DashboardData!B32', '=DashboardData!H32', '=IFERROR(SPARKLINE(J8,{"charttype","bar";"max",MAX($J$5:$J$10);"color1","#4a86e8"}),"")', ''],
-    ['', '', '', '', '', '', '', '', '=DashboardData!B33', '=DashboardData!H33', '=IFERROR(SPARKLINE(J9,{"charttype","bar";"max",MAX($J$5:$J$10);"color1","#4a86e8"}),"")', ''],
-    ['', '', '', '', '', '', '', '', '=DashboardData!B34', '=DashboardData!H34', '=IFERROR(SPARKLINE(J10,{"charttype","bar";"max",MAX($J$5:$J$10);"color1","#4a86e8"}),"")', ''],
+    ['без продажів', '=DashboardData!C17', '=DashboardData!D17', '=DashboardData!E17', '=DashboardData!F17', '=DashboardData!G17', '=DashboardData!H17', '', '=DashboardData!B29', '=DashboardData!H29', '=DashboardData!K29', ''],
+    ['продажі', '=DashboardData!C18', '=DashboardData!D18', '=DashboardData!E18', '=DashboardData!F18', '=DashboardData!G18', '=DashboardData!H18', '', '=DashboardData!B30', '=DashboardData!H30', '=DashboardData!K30', ''],
+    ['', '', '', '', '', '', '', '', '=DashboardData!B31', '=DashboardData!H31', '=DashboardData!K31', ''],
+    ['', '', '', '', '', '', '', '', '=DashboardData!B32', '=DashboardData!H32', '=DashboardData!K32', ''],
+    ['', '', '', '', '', '', '', '', '=DashboardData!B33', '=DashboardData!H33', '=DashboardData!K33', ''],
+    ['', '', '', '', '', '', '', '', '=DashboardData!B34', '=DashboardData!H34', '=DashboardData!K34', ''],
     ['', '', '', '', '', '', '', '', '', '', '', ''],
     ['Клікабельні товари', 'Кількість товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', '', 'Загалом', '', '', ''],
     ['високі кліки', '=DashboardData!C21', '=DashboardData!D21', '=DashboardData!E21', '=DashboardData!F21', '=DashboardData!G21', '=DashboardData!H21', '', 'Товарів', '=DashboardData!C12', '', ''],
@@ -1280,16 +1289,16 @@ function dashboardRows_() {
     ['', '', '', '', '', '', '', '', '=DashboardData!B40', '=DashboardData!C40', '=DashboardData!K40', ''],
     ['', '', '', '', '', '', '', '', '', '', '', ''],
     ['Топ product_type за витратами', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка', '', ''],
-    ['=DashboardData!B43', '=DashboardData!C43', '=DashboardData!D43', '=DashboardData!E43', '=DashboardData!F43', '=DashboardData!G43', '=DashboardData!H43', '=DashboardData!I43', '=DashboardData!J43', '=DashboardData!K43', '=IFERROR(SPARKLINE(G26,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
-    ['=DashboardData!B44', '=DashboardData!C44', '=DashboardData!D44', '=DashboardData!E44', '=DashboardData!F44', '=DashboardData!G44', '=DashboardData!H44', '=DashboardData!I44', '=DashboardData!J44', '=DashboardData!K44', '=IFERROR(SPARKLINE(G27,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
-    ['=DashboardData!B45', '=DashboardData!C45', '=DashboardData!D45', '=DashboardData!E45', '=DashboardData!F45', '=DashboardData!G45', '=DashboardData!H45', '=DashboardData!I45', '=DashboardData!J45', '=DashboardData!K45', '=IFERROR(SPARKLINE(G28,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
-    ['=DashboardData!B46', '=DashboardData!C46', '=DashboardData!D46', '=DashboardData!E46', '=DashboardData!F46', '=DashboardData!G46', '=DashboardData!H46', '=DashboardData!I46', '=DashboardData!J46', '=DashboardData!K46', '=IFERROR(SPARKLINE(G29,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
-    ['=DashboardData!B47', '=DashboardData!C47', '=DashboardData!D47', '=DashboardData!E47', '=DashboardData!F47', '=DashboardData!G47', '=DashboardData!H47', '=DashboardData!I47', '=DashboardData!J47', '=DashboardData!K47', '=IFERROR(SPARKLINE(G30,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
-    ['=DashboardData!B48', '=DashboardData!C48', '=DashboardData!D48', '=DashboardData!E48', '=DashboardData!F48', '=DashboardData!G48', '=DashboardData!H48', '=DashboardData!I48', '=DashboardData!J48', '=DashboardData!K48', '=IFERROR(SPARKLINE(G31,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
-    ['=DashboardData!B49', '=DashboardData!C49', '=DashboardData!D49', '=DashboardData!E49', '=DashboardData!F49', '=DashboardData!G49', '=DashboardData!H49', '=DashboardData!I49', '=DashboardData!J49', '=DashboardData!K49', '=IFERROR(SPARKLINE(G32,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
-    ['=DashboardData!B50', '=DashboardData!C50', '=DashboardData!D50', '=DashboardData!E50', '=DashboardData!F50', '=DashboardData!G50', '=DashboardData!H50', '=DashboardData!I50', '=DashboardData!J50', '=DashboardData!K50', '=IFERROR(SPARKLINE(G33,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
-    ['=DashboardData!B51', '=DashboardData!C51', '=DashboardData!D51', '=DashboardData!E51', '=DashboardData!F51', '=DashboardData!G51', '=DashboardData!H51', '=DashboardData!I51', '=DashboardData!J51', '=DashboardData!K51', '=IFERROR(SPARKLINE(G34,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', ''],
-    ['=DashboardData!B52', '=DashboardData!C52', '=DashboardData!D52', '=DashboardData!E52', '=DashboardData!F52', '=DashboardData!G52', '=DashboardData!H52', '=DashboardData!I52', '=DashboardData!J52', '=DashboardData!K52', '=IFERROR(SPARKLINE(G35,{"charttype","bar";"max",MAX($G$26:$G$35);"color1","#6aa84f"}),"")', '']
+    ['=DashboardData!B43', '=DashboardData!C43', '=DashboardData!D43', '=DashboardData!E43', '=DashboardData!F43', '=DashboardData!G43', '=DashboardData!H43', '=DashboardData!I43', '=DashboardData!J43', '=DashboardData!K43', '', ''],
+    ['=DashboardData!B44', '=DashboardData!C44', '=DashboardData!D44', '=DashboardData!E44', '=DashboardData!F44', '=DashboardData!G44', '=DashboardData!H44', '=DashboardData!I44', '=DashboardData!J44', '=DashboardData!K44', '', ''],
+    ['=DashboardData!B45', '=DashboardData!C45', '=DashboardData!D45', '=DashboardData!E45', '=DashboardData!F45', '=DashboardData!G45', '=DashboardData!H45', '=DashboardData!I45', '=DashboardData!J45', '=DashboardData!K45', '', ''],
+    ['=DashboardData!B46', '=DashboardData!C46', '=DashboardData!D46', '=DashboardData!E46', '=DashboardData!F46', '=DashboardData!G46', '=DashboardData!H46', '=DashboardData!I46', '=DashboardData!J46', '=DashboardData!K46', '', ''],
+    ['=DashboardData!B47', '=DashboardData!C47', '=DashboardData!D47', '=DashboardData!E47', '=DashboardData!F47', '=DashboardData!G47', '=DashboardData!H47', '=DashboardData!I47', '=DashboardData!J47', '=DashboardData!K47', '', ''],
+    ['=DashboardData!B48', '=DashboardData!C48', '=DashboardData!D48', '=DashboardData!E48', '=DashboardData!F48', '=DashboardData!G48', '=DashboardData!H48', '=DashboardData!I48', '=DashboardData!J48', '=DashboardData!K48', '', ''],
+    ['=DashboardData!B49', '=DashboardData!C49', '=DashboardData!D49', '=DashboardData!E49', '=DashboardData!F49', '=DashboardData!G49', '=DashboardData!H49', '=DashboardData!I49', '=DashboardData!J49', '=DashboardData!K49', '', ''],
+    ['=DashboardData!B50', '=DashboardData!C50', '=DashboardData!D50', '=DashboardData!E50', '=DashboardData!F50', '=DashboardData!G50', '=DashboardData!H50', '=DashboardData!I50', '=DashboardData!J50', '=DashboardData!K50', '', ''],
+    ['=DashboardData!B51', '=DashboardData!C51', '=DashboardData!D51', '=DashboardData!E51', '=DashboardData!F51', '=DashboardData!G51', '=DashboardData!H51', '=DashboardData!I51', '=DashboardData!J51', '=DashboardData!K51', '', ''],
+    ['=DashboardData!B52', '=DashboardData!C52', '=DashboardData!D52', '=DashboardData!E52', '=DashboardData!F52', '=DashboardData!G52', '=DashboardData!H52', '=DashboardData!I52', '=DashboardData!J52', '=DashboardData!K52', '', '']
   ];
 }
 
@@ -1379,8 +1388,12 @@ function formatDashboardDataSheet_(sheet, rowCount) {
 
 function formatDashboardSheet_(sheet) {
   sheet.setFrozenRows(1);
-  sheet.setColumnWidths(1, 7, 118);
-  sheet.setColumnWidths(9, 3, 120);
+  sheet.setColumnWidth(1, 190);
+  sheet.setColumnWidths(2, 6, 112);
+  sheet.setColumnWidth(8, 24);
+  sheet.setColumnWidth(9, 180);
+  sheet.setColumnWidths(10, 2, 112);
+  sheet.setColumnWidth(12, 24);
   sheet.getRange(2, 1, 34, 12).setWrap(false).setVerticalAlignment('middle');
   sheet.getRange(2, 1, 1, 12).setFontSize(13).setFontWeight('bold');
   var headerRows = [4, 12, 17, 25];
