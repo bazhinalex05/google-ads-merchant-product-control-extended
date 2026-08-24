@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-8';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-1';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-9';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-2';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1123,7 +1123,7 @@ function buildDashboardData_(ctx) {
 
 function buildDashboard_(ctx, model) {
   var sheet = ctx.sheets.dashboard;
-  ensureSheetColumns_(sheet, 22);
+  ensureSheetColumns_(sheet, 12);
   var rebuild = dashboardRefreshRequested_(sheet, 'Перебудувати Dashboard при наступному запуску');
   if (!rebuild) {
     ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', false);
@@ -1252,11 +1252,11 @@ function dashboardDataRows_(model) {
   ];
   for (var i = 0; i < model.stages.length; i++) rows.push(dashboardDataAggRow_('funnel_stage', model.stages[i], model.total.products));
   rows.push(blank);
-  rows.push(['quarantine', 'item', 'products', 'active_until', '', '', '', '', '', '', 'share']);
-  rows.push(['quarantine', 'Усього в карантині', model.quarantine.active, '', '', '', '', '', '', '', model.total.products ? model.quarantine.active / model.total.products : 0]);
-  rows.push(['quarantine', 'Кліки без продажів', model.quarantine.noSales, '', '', '', '', '', '', '', model.total.products ? model.quarantine.noSales / model.total.products : 0]);
-  rows.push(['quarantine', 'Витрати > % ціни', model.quarantine.spend, '', '', '', '', '', '', '', model.total.products ? model.quarantine.spend / model.total.products : 0]);
-  rows.push(['quarantine', 'Дорогий клік', model.quarantine.expensiveClick, '', '', '', '', '', '', '', model.total.products ? model.quarantine.expensiveClick / model.total.products : 0]);
+  rows.push(['quarantine', 'item', 'products', 'status', '', '', '', '', '', '', '']);
+  rows.push(['quarantine', 'Усього в карантині', model.quarantine.active, 'реєстр', '', '', '', '', '', '', '']);
+  rows.push(['quarantine', 'Кліки без продажів', model.quarantine.noSales, 'увімкнено', '', '', '', '', '', '', '']);
+  rows.push(['quarantine', 'Витрати > % ціни', model.quarantine.spend, 'увімкнено', '', '', '', '', '', '', '']);
+  rows.push(['quarantine', 'Дорогий клік', model.quarantine.expensiveClick, 'увімкнено', '', '', '', '', '', '', '']);
   rows.push(blank);
   rows.push(['product_type_cost', 'item', 'products', 'impressions', 'clicks', 'conversions', 'conversion_value', 'cost', 'roas', 'cpa', 'share']);
   for (var j = 0; j < model.topProductTypes.length; j++) rows.push(dashboardDataAggRow_('product_type_cost', model.topProductTypes[j], model.total.products));
@@ -1322,11 +1322,11 @@ function dashboardAppendAggSection_(rows, title, items, totalProducts) {
 
 
 function dashboardAppendQuarantineSection_(rows, model) {
-  rows.push(['Карантин', 'Товарів', 'Частка', '', '', '', '', '', '', '', '', '']);
-  rows.push(['Усього в карантині', model.quarantine.active, model.total.products ? model.quarantine.active / model.total.products : 0, '', '', '', '', '', '', '', '', '']);
-  rows.push(['Кліки без продажів', model.quarantine.noSales, model.total.products ? model.quarantine.noSales / model.total.products : 0, '', '', '', '', '', '', '', '', '']);
-  rows.push(['Витрати > % ціни', model.quarantine.spend, model.total.products ? model.quarantine.spend / model.total.products : 0, '', '', '', '', '', '', '', '', '']);
-  rows.push(['Дорогий клік', model.quarantine.expensiveClick, model.total.products ? model.quarantine.expensiveClick / model.total.products : 0, '', '', '', '', '', '', '', '', '']);
+  rows.push(['Карантин', 'Товарів', 'Статус', '', '', '', '', '', '', '', '', '']);
+  rows.push(['Усього в карантині', model.quarantine.active, 'реєстр', '', '', '', '', '', '', '', '', '']);
+  rows.push(['Кліки без продажів', model.quarantine.noSales, 'увімкнено', '', '', '', '', '', '', '', '', '']);
+  rows.push(['Витрати > % ціни', model.quarantine.spend, 'увімкнено', '', '', '', '', '', '', '', '', '']);
+  rows.push(['Дорогий клік', model.quarantine.expensiveClick, 'увімкнено', '', '', '', '', '', '', '', '', '']);
   rows.push(dashboardWideRow_(''));
 }
 
@@ -1420,7 +1420,6 @@ function formatDashboardSheet_(sheet, rowCount) {
   sheet.setColumnWidths(2, 9, 112);
   sheet.setColumnWidth(11, 24);
   sheet.setColumnWidth(12, 28);
-  sheet.setColumnWidths(13, 10, 110);
   sheet.getRange(2, 1, rowCount, 12).setWrap(false).setVerticalAlignment('middle');
   sheet.getRange(2, 1, 1, 12).setFontSize(13).setFontWeight('bold');
   sheet.getRange(2, 1, rowCount, 12).setBorder(true, true, true, true, true, true, '#b7c9e8', SpreadsheetApp.BorderStyle.SOLID);
@@ -1467,7 +1466,6 @@ function buildDashboardCharts_(sheet, rows) {
   addDashboardCostPieChart_(sheet, rows, 'Товари з конверсіями', '% Витрат на конверсійні', 19, 12, 0);
   addDashboardCostPieChart_(sheet, rows, 'Клікабельні товари', '% Витрат на клікабельні', 35, 12, 0);
   addDashboardCostPieChart_(sheet, rows, 'Популярні в пошуку', '% Витрат на популярні', 51, 12, 0);
-  addDashboardCostPieChart_(sheet, rows, 'Product type за витратами', 'Product type за витратами', 67, 12, 15);
 }
 
 
