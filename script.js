@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-4';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dynamic-dashboard-1';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-5';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dynamic-dashboard-2';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1149,18 +1149,46 @@ function dashboardRefreshRequested_(sheet, expectedLabel) {
 
 function ensureDashboardRefreshControl_(sheet, label, checked) {
   sheet.getRange(1, 1).setValue(label);
-  var checkboxRule = SpreadsheetApp.newDataValidation().requireCheckbox().build();
-  sheet.getRange(1, 2)
-    .clearContent()
-    .clearDataValidations()
-    .setDataValidation(checkboxRule)
-    .setValue(checked === true);
+  var checkboxCell = sheet.getRange(1, 2);
+  checkboxCell.clearContent().clearDataValidations();
+  checkboxCell.insertCheckboxes();
+  setCheckboxBooleanValue_(sheet, 1, 2, checked === true);
   sheet.getRange(1, 3).setValue(DASHBOARD_LAYOUT_BUILD);
   sheet.getRange(1, 1, 1, 3).setBackground('#f3f6fb').setFontColor('#333333').setFontWeight('normal');
   try {
     sheet.hideRows(1);
   } catch (e) {
     Logger.log('Dashboard refresh control row hide skipped: ' + String(e));
+  }
+}
+
+
+function setCheckboxBooleanValue_(sheet, row, column, value) {
+  var boolValue = value === true;
+  sheet.getRange(row, column).setValue(boolValue);
+  try {
+    if (typeof Sheets === 'undefined' || !Sheets.Spreadsheets || !Sheets.Spreadsheets.batchUpdate) return;
+    Sheets.Spreadsheets.batchUpdate({
+      requests: [{
+        repeatCell: {
+          range: {
+            sheetId: sheet.getSheetId(),
+            startRowIndex: row - 1,
+            endRowIndex: row,
+            startColumnIndex: column - 1,
+            endColumnIndex: column
+          },
+          cell: {
+            userEnteredValue: {
+              boolValue: boolValue
+            }
+          },
+          fields: 'userEnteredValue'
+        }
+      }]
+    }, sheet.getParent().getId());
+  } catch (e) {
+    Logger.log('Checkbox boolean write fallback used: ' + String(e));
   }
 }
 
