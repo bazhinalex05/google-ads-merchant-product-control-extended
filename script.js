@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-25';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-16';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-26';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-17';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1288,18 +1288,20 @@ function dashboardDataRows_(model) {
   rows.push(['quarantine', 'Нові сьогодні', model.quarantine.newToday, '', '', '', '', '', '', '', '']);
   rows.push(['quarantine', 'Витрати карантину', '', '', '', '', '', model.quarantine.activeCost, '', '', '']);
   rows.push(blank);
-  rows.push(['priority_summary', 'priority', 'products', 'in_quarantine', 'new_today', 'excluded', 'cost', 'quarantine_cost', 'impressions', 'clicks', 'conversions']);
-  for (var j = 0; j < model.priorities.length; j++) rows.push(dashboardPrioritySummaryRow_(model.priorities[j]));
+  rows.push(['priority_summary', 'priority', 'products', 'impressions', 'clicks', 'conversions', 'conversion_value', 'cost', 'roas', 'cpa', 'share']);
+  for (var j = 0; j < model.priorities.length; j++) rows.push(dashboardDataAggRow_('priority_summary', model.priorities[j].total, model.total.products));
   rows.push(blank);
-  rows.push(['priority_funnel', 'priority', 'stage', 'products', 'impressions', 'clicks', 'conversions', 'conversion_value', 'cost', 'share_in_priority', '']);
+  rows.push(['priority_funnel', 'priority / stage', 'products', 'impressions', 'clicks', 'conversions', 'conversion_value', 'cost', 'roas', 'cpa', 'share_in_priority']);
   for (var p = 0; p < model.priorities.length; p++) {
     var priority = model.priorities[p];
     for (var s = 0; s < priority.stages.length; s++) rows.push(dashboardPriorityFunnelRow_(priority, priority.stages[s]));
   }
   rows.push(blank);
-  rows.push(['priority_quarantine', 'priority', 'reason', 'products', 'status', '', 'quarantine_cost', '', '', '', '']);
+  rows.push(['priority_quarantine', 'priority / reason', 'products', 'status', '', '', '', 'quarantine_cost', '', '', '']);
   for (var q = 0; q < model.priorities.length; q++) {
     var pr = model.priorities[q];
+    rows.push(dashboardPriorityQuarantineTotalRow_(pr, 'Усього в карантині', pr.quarantine.active, '', pr.quarantine.cost));
+    rows.push(dashboardPriorityQuarantineTotalRow_(pr, 'Нові сьогодні', pr.quarantine.newToday, '', 0));
     rows.push(dashboardPriorityQuarantineRow_(pr, 'Кліки без продажів', 'noSales', dashboardEnabledStatus_(model.quarantine.noSalesEnabled)));
     rows.push(dashboardPriorityQuarantineRow_(pr, 'Витрати > % ціни', 'spend', dashboardEnabledStatus_(model.quarantine.spendEnabled)));
     rows.push(dashboardPriorityQuarantineRow_(pr, 'Дорогий клік', 'expensiveClick', dashboardEnabledStatus_(model.quarantine.expensiveClickEnabled)));
@@ -1391,54 +1393,42 @@ function dashboardDataAggRow_(section, agg, totalProducts) {
 }
 
 
-function dashboardPrioritySummaryRow_(priority) {
-  return [
-    'priority_summary',
-    priority.name,
-    priority.total.products,
-    priority.quarantine.active,
-    priority.quarantine.newToday,
-    priority.excluded,
-    priority.total.cost,
-    priority.quarantine.cost,
-    priority.total.impressions,
-    priority.total.clicks,
-    priority.total.conversions
-  ];
-}
-
-
 function dashboardPriorityFunnelRow_(priority, stage) {
   return [
     'priority_funnel',
-    priority.name,
-    stage.name,
+    priority.name + ' | ' + stage.name,
     stage.products,
     stage.impressions,
     stage.clicks,
     stage.conversions,
     stage.value,
     stage.cost,
-    priority.total.products ? stage.products / priority.total.products : 0,
+    stage.roas,
+    stage.cpa,
+    priority.total.products ? stage.products / priority.total.products : 0
+  ];
+}
+
+
+function dashboardPriorityQuarantineTotalRow_(priority, label, products, status, cost) {
+  return [
+    'priority_quarantine',
+    priority.name + ' | ' + label,
+    products,
+    status,
+    '',
+    '',
+    '',
+    cost,
+    '',
+    '',
     ''
   ];
 }
 
 
 function dashboardPriorityQuarantineRow_(priority, label, key, status) {
-  return [
-    'priority_quarantine',
-    priority.name,
-    label,
-    priority.quarantine[key].products,
-    status,
-    '',
-    priority.quarantine[key].cost,
-    '',
-    '',
-    '',
-    ''
-  ];
+  return dashboardPriorityQuarantineTotalRow_(priority, label, priority.quarantine[key].products, status, priority.quarantine[key].cost);
 }
 
 
@@ -1613,7 +1603,7 @@ function formatDashboardDataSheet_(sheet, rowCount) {
   for (var i = 0; i < values.length; i++) {
     var section = String(values[i][0] || '');
     var label = String(values[i][1] || '');
-    if (sections[section] && (label === 'item' || label === 'priority' || label === 'stage')) {
+    if (sections[section] && (label === 'item' || label === 'priority' || label === 'stage' || label === 'priority / stage' || label === 'priority / reason')) {
       sheet.getRange(i + 2, 1, 1, 11)
         .setBackground('#4a86e8')
         .setFontColor('#ffffff')
