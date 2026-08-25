@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-13';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-6';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-14';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-7';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1123,7 +1123,7 @@ function buildDashboardData_(ctx) {
 
 function buildDashboard_(ctx, model) {
   var sheet = ctx.sheets.dashboard;
-  ensureSheetColumns_(sheet, 12);
+  ensureSheetColumns_(sheet, 7);
   var rebuild = dashboardRefreshRequested_(sheet, 'Перебудувати Dashboard при наступному запуску');
   if (!rebuild) {
     ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', false);
@@ -1134,7 +1134,6 @@ function buildDashboard_(ctx, model) {
   ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', false);
   var rows = dashboardRows_(model);
   sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
-  writeDashboardStageSpendSource_(sheet, model);
   formatDashboardSheet_(sheet, rows.length);
   buildDashboardCharts_(sheet);
 }
@@ -1271,25 +1270,25 @@ function dashboardRows_(model) {
   dashboardAppendAggSection_(rows, 'Клікабельні', model.clickSplit);
   dashboardAppendAggSection_(rows, 'Популярні', model.impressionSplit);
   while (rows.length < 20) rows.push(dashboardWideRow_(''));
-  rows.push(['Загалом', 'за останні 14 днів', 'Карантин', 'Статус', 'Товарів', 'Етап', 'Витрати', '', '', '', '', '']);
-  rows.push(['Товарів', 'ROAS', 'Усього в карантині', 'реєстр', model.quarantine.active, model.stages[0].name, model.stages[0].cost, '', '', '', '', '']);
-  rows.push([model.total.products, model.total.roas, 'Кліки без продажів', 'увімкнено', model.quarantine.noSales, model.stages[1].name, model.stages[1].cost, '', '', '', '', '']);
-  rows.push(['CPA', 'Конверсії', 'Витрати > % ціни', 'увімкнено', model.quarantine.spend, model.stages[2].name, model.stages[2].cost, '', '', '', '', '']);
-  rows.push([model.total.cpa, model.total.conversions, 'Дорогий клік', 'увімкнено', model.quarantine.expensiveClick, model.stages[3].name, model.stages[3].cost, '', '', '', '', '']);
-  rows.push(['Цінність конв.', 'Витрати', '', '', '', model.stages[4].name, model.stages[4].cost, '', '', '', '', '']);
-  rows.push([model.total.value, model.total.cost, 'У карантині у вибірці', '', model.quarantineCount, model.stages[5].name, model.stages[5].cost, '', '', '', '', '']);
-  rows.push(['', '', 'Виключено з реклами', '', model.excludedCount, '', '', '', '', '', '', '']);
+  rows.push(['Загалом', 'за останні 14 днів', 'Карантин', 'Статус', 'Товарів', 'Етап', 'Витрати']);
+  rows.push(['Товарів', 'ROAS', 'Усього в карантині', 'реєстр', model.quarantine.active, model.stages[0].name, model.stages[0].cost]);
+  rows.push([model.total.products, model.total.roas, 'Кліки без продажів', 'увімкнено', model.quarantine.noSales, model.stages[1].name, model.stages[1].cost]);
+  rows.push(['CPA', 'Конверсії', 'Витрати > % ціни', 'увімкнено', model.quarantine.spend, model.stages[2].name, model.stages[2].cost]);
+  rows.push([model.total.cpa, model.total.conversions, 'Дорогий клік', 'увімкнено', model.quarantine.expensiveClick, model.stages[3].name, model.stages[3].cost]);
+  rows.push(['Цінність конв.', 'Витрати', '', '', '', model.stages[4].name, model.stages[4].cost]);
+  rows.push([model.total.value, model.total.cost, 'У карантині у вибірці', '', model.quarantineCount, model.stages[5].name, model.stages[5].cost]);
+  rows.push(['', '', 'Виключено з реклами', '', model.excludedCount, '', '']);
   return rows;
 }
 
 
 function dashboardWideRow_(value) {
-  return [value, '', '', '', '', '', '', '', '', '', '', ''];
+  return [value, '', '', '', '', '', ''];
 }
 
 
 function dashboardHeaderRow_(title) {
-  return [title, 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', '', '', '', '', ''];
+  return [title, 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати'];
 }
 
 
@@ -1304,12 +1303,7 @@ function dashboardAppendAggSection_(rows, title, items) {
       item.clicks,
       item.conversions,
       item.value,
-      item.cost,
-      '',
-      '',
-      '',
-      '',
-      ''
+      item.cost
     ]);
   }
 }
@@ -1411,13 +1405,13 @@ function formatDashboardDataSheet_(sheet, rowCount) {
 function formatDashboardSheet_(sheet, rowCount) {
   sheet.setFrozenRows(1);
   sheet.setColumnWidths(1, 7, 164);
-  sheet.setColumnWidths(8, 5, 70);
   sheet.setRowHeights(13, 9, 21);
   ensureSheetRows_(sheet, 35);
-  sheet.getRange(2, 1, rowCount, 12).setWrap(false).setVerticalAlignment('middle');
-  sheet.getRange(2, 1, 1, 12).setFontSize(13).setFontWeight('bold');
+  ensureSheetColumns_(sheet, 7);
+  sheet.getRange(2, 1, rowCount, 7).setWrap(false).setVerticalAlignment('middle');
   sheet.getRange(2, 1, rowCount, 7).setBorder(true, true, true, true, true, true, '#b7c9e8', SpreadsheetApp.BorderStyle.SOLID);
-  sheet.getRange(2, 1, rowCount, 12).setBackground('#ffffff').setFontColor('#000000').setFontWeight('normal');
+  sheet.getRange(2, 1, rowCount, 7).setBackground('#ffffff').setFontColor('#000000').setFontWeight('normal');
+  sheet.getRange(2, 1, 1, 7).setFontSize(13).setFontWeight('bold');
   var headerTitles = {
     'Конверсійні': true,
     'Клікабельні': true,
@@ -1450,26 +1444,12 @@ function formatDashboardSheet_(sheet, rowCount) {
   sheet.getRange(2, 6, 11, 2).setNumberFormat('"UAH" #,##0.00');
   sheet.getRange(23, 1, 6, 2).setNumberFormat('0.##');
   sheet.getRange(28, 1, 1, 2).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(2, 11, 7, 2).setBackground('#ffffff').setFontSize(9).setNumberFormat('0.##');
-  sheet.getRange(2, 12, 7, 1).setNumberFormat('"UAH" #,##0.00');
-  try {
-    sheet.hideColumns(8, 5);
-  } catch (e) {
-    Logger.log('Dashboard hidden source columns skipped: ' + String(e));
-  }
 }
 
 
 function clearSheetCharts_(sheet) {
   var charts = sheet.getCharts();
   for (var i = 0; i < charts.length; i++) sheet.removeChart(charts[i]);
-}
-
-
-function writeDashboardStageSpendSource_(sheet, model) {
-  var rows = [['Етап', 'Витрати']];
-  for (var i = 0; i < model.stages.length; i++) rows.push([model.stages[i].name, model.stages[i].cost]);
-  sheet.getRange(2, 11, rows.length, 2).setValues(rows);
 }
 
 
@@ -1485,7 +1465,7 @@ function buildDashboardCharts_(sheet) {
 
   var stageChart = sheet.newChart()
     .asBarChart()
-    .addRange(sheet.getRange(2, 11, 7, 2))
+    .addRange(sheet.getRange(22, 6, 7, 2))
     .setOption('title', 'Витрати на етапи воронки')
     .setOption('legend', { position: 'none' })
     .setOption('useFirstColumnAsDomain', true)
@@ -2273,7 +2253,7 @@ function compactManagedSheetGrids_(sheets, settings) {
   ensureSheetColumns_(sheets.settings, 3);
   ensureSheetColumns_(sheets.productTypes, 18);
   ensureSheetColumns_(sheets.productDiagnostics, 15);
-  ensureSheetColumns_(sheets.dashboard, 12);
+  ensureSheetColumns_(sheets.dashboard, 7);
   ensureSheetColumns_(sheets.dashboardData, 11);
   ensureSheetColumns_(sheets.quarantineRegistry, 8);
   ensureSheetColumns_(sheets.quarantineLog, 4);
