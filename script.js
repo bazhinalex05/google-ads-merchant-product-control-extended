@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-35';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-25';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-36';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-26';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1301,17 +1301,17 @@ function dashboardBenchmarkPairRows_(priorities) {
 function dashboardBenchmarkBlockRows_(priority) {
   var rows = [];
   rows.push([dashboardDisplayPriorityName_(priority.name), '', '', '', '']);
-  rows.push(['Воронка', 'Товарів', 'Витрати', 'Конверсії', 'CPC']);
+  rows.push(['Воронка', 'Товарів', 'Конверсії', 'Частка бюдж.', 'Витрати']);
   for (var i = 0; i < priority.stages.length; i++) {
     var stage = priority.stages[i];
-    rows.push([stage.name, stage.products, stage.cost, stage.conversions, stage.clicks ? stage.cost / stage.clicks : 0]);
+    rows.push([stage.name, stage.products, stage.conversions, priority.total.cost ? stage.cost / priority.total.cost : 0, stage.cost]);
   }
-  rows.push(['Карантин', 'Статус', 'Товарів', 'Витрати', 'Частка']);
-  rows.push(['Усього в карантині', '', priority.quarantine.active, priority.quarantine.cost, priority.total.products ? priority.quarantine.active / priority.total.products : 0]);
-  rows.push(['Нові сьогодні', '', priority.quarantine.newToday, 0, priority.total.products ? priority.quarantine.newToday / priority.total.products : 0]);
-  rows.push(['Кліки без продажів', dashboardEnabledStatus_(priority.quarantine.noSalesEnabled), priority.quarantine.noSales.products, priority.quarantine.noSales.cost, priority.total.products ? priority.quarantine.noSales.products / priority.total.products : 0]);
-  rows.push(['Витрати > % ціни', dashboardEnabledStatus_(priority.quarantine.spendEnabled), priority.quarantine.spend.products, priority.quarantine.spend.cost, priority.total.products ? priority.quarantine.spend.products / priority.total.products : 0]);
-  rows.push(['Дорогий клік', dashboardEnabledStatus_(priority.quarantine.expensiveClickEnabled), priority.quarantine.expensiveClick.products, priority.quarantine.expensiveClick.cost, priority.total.products ? priority.quarantine.expensiveClick.products / priority.total.products : 0]);
+  rows.push(['Карантин', 'Статус', 'Товарів', 'Частка', 'Витрати']);
+  rows.push(['Усього в карантині', '', priority.quarantine.active, priority.total.products ? priority.quarantine.active / priority.total.products : 0, priority.quarantine.cost]);
+  rows.push(['Нові сьогодні', '', priority.quarantine.newToday, priority.total.products ? priority.quarantine.newToday / priority.total.products : 0, 0]);
+  rows.push(['Кліки без продажів', dashboardEnabledStatus_(priority.quarantine.noSalesEnabled), priority.quarantine.noSales.products, priority.total.products ? priority.quarantine.noSales.products / priority.total.products : 0, priority.quarantine.noSales.cost]);
+  rows.push(['Витрати > % ціни', dashboardEnabledStatus_(priority.quarantine.spendEnabled), priority.quarantine.spend.products, priority.total.products ? priority.quarantine.spend.products / priority.total.products : 0, priority.quarantine.spend.cost]);
+  rows.push(['Дорогий клік', dashboardEnabledStatus_(priority.quarantine.expensiveClickEnabled), priority.quarantine.expensiveClick.products, priority.total.products ? priority.quarantine.expensiveClick.products / priority.total.products : 0, priority.quarantine.expensiveClick.cost]);
   return rows;
 }
 
@@ -1658,6 +1658,7 @@ function formatDashboardDataSheet_(sheet, rowCount) {
     }
     if (!inSummary && (hasLeftA || hasLeftB)) {
       sheet.getRange(row, 1, 1, 5).setBackground(fillColor);
+      sheet.getRange(row, 5, 1, 1).setBorder(null, null, null, true, null, null, borderColor, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
     } else if (inSummary && (hasLeftA || hasLeftB)) {
       sheet.getRange(row, 1, 1, 10).setBackground(fillColor);
     }
@@ -1695,20 +1696,22 @@ function formatDashboardDataSheet_(sheet, rowCount) {
         .setHorizontalAlignment('center');
     }
     if (leftA === 'Воронка') {
-      sheet.getRange(row + 1, 3, 6, 1).setNumberFormat('"UAH" #,##0.00');
+      sheet.getRange(row + 1, 3, 6, 1).setNumberFormat('0.##');
+      sheet.getRange(row + 1, 4, 6, 1).setNumberFormat('0.0%');
       sheet.getRange(row + 1, 5, 6, 1).setNumberFormat('"UAH" #,##0.00');
     }
     if (rightF === 'Воронка') {
-      sheet.getRange(row + 1, 8, 6, 1).setNumberFormat('"UAH" #,##0.00');
+      sheet.getRange(row + 1, 8, 6, 1).setNumberFormat('0.##');
+      sheet.getRange(row + 1, 9, 6, 1).setNumberFormat('0.0%');
       sheet.getRange(row + 1, 10, 6, 1).setNumberFormat('"UAH" #,##0.00');
     }
     if (leftA === 'Карантин') {
-      sheet.getRange(row + 1, 4, 5, 1).setNumberFormat('"UAH" #,##0.00');
-      sheet.getRange(row + 1, 5, 5, 1).setNumberFormat('0.0%');
+      sheet.getRange(row + 1, 4, 5, 1).setNumberFormat('0.0%');
+      sheet.getRange(row + 1, 5, 5, 1).setNumberFormat('"UAH" #,##0.00');
     }
     if (rightF === 'Карантин') {
-      sheet.getRange(row + 1, 9, 5, 1).setNumberFormat('"UAH" #,##0.00');
-      sheet.getRange(row + 1, 10, 5, 1).setNumberFormat('0.0%');
+      sheet.getRange(row + 1, 9, 5, 1).setNumberFormat('0.0%');
+      sheet.getRange(row + 1, 10, 5, 1).setNumberFormat('"UAH" #,##0.00');
     }
   }
 }
