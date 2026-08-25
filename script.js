@@ -17,7 +17,7 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-29';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-30';
 var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-20';
 
 
@@ -749,17 +749,17 @@ function stageProductTypesBuild_(ctx) {
   ]];
   for (var i = 0; i < paths.length; i++) {
     var path = paths[i];
-    var parts = path ? path.split(' > ') : [''];
+    var displayParts = sparseProductTypeDisplayParts_(path);
     var saved = preserved[path] || {};
     var enabled = hasEnabled && saved.hasOwnProperty('enabled') ? saved.enabled === true : true;
     var stats = productTypeOutputStats_(statsByPath[path]);
     rows.push([
       enabled,
-      parts[0] || '',
-      parts[1] || '',
-      parts[2] || '',
-      parts[3] || '',
-      parts[4] || '',
+      displayParts[0] || '',
+      displayParts[1] || '',
+      displayParts[2] || '',
+      displayParts[3] || '',
+      displayParts[4] || '',
       path,
       saved.dashboard_group || '',
       saved.target_cpa || '',
@@ -781,6 +781,17 @@ function stageProductTypesBuild_(ctx) {
   if (ctx.settings.enableManagedSheetFormatting) ctx.sheets.productTypes.getRange(1, 1, 1, rows[0].length).setFontWeight('bold');
   advanceStage_(ctx, 'QUARANTINE_UPDATE');
   return { status: 'DONE', message: 'ProductTypes rebuilt. Paths=' + (rows.length - 1) };
+}
+
+
+function sparseProductTypeDisplayParts_(path) {
+  var out = ['', '', '', '', ''];
+  path = String(path || '').trim();
+  if (!path) return out;
+  var parts = path === '(empty)' ? ['(empty)'] : path.split(' > ');
+  var depth = Math.min(5, parts.length);
+  if (depth > 0) out[depth - 1] = parts[depth - 1] || '';
+  return out;
 }
 
 
