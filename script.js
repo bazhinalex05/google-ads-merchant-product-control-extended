@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-30';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-20';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-31';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-21';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1603,9 +1603,18 @@ function formatDashboardDataSheet_(sheet, rowCount) {
   sheet.setColumnWidths(1, 1, 180);
   sheet.setColumnWidths(2, 9, 110);
   sheet.setColumnWidth(11, 40);
-  sheet.getRange(2, 1, rowCount, 11).setWrap(false).setVerticalAlignment('middle');
-  sheet.getRange(2, 1, rowCount, 11).setHorizontalAlignment('center');
-  sheet.getRange(2, 1, rowCount, 11).setNumberFormat('0.##');
+  var area = sheet.getRange(2, 1, rowCount, 11);
+  area
+    .setWrap(false)
+    .setVerticalAlignment('middle')
+    .setHorizontalAlignment('center')
+    .setBackground('#ffffff')
+    .setFontColor('#000000')
+    .setFontWeight('normal')
+    .setBorder(false, false, false, false, false, false)
+    .setNumberFormat('General');
+  sheet.getRange(2, 1, rowCount, 1).setNumberFormat('@');
+  sheet.getRange(2, 2, rowCount, 4).setNumberFormat('0.##');
   sheet.getRange(2, 6, rowCount, 2).setNumberFormat('"UAH" #,##0.00');
   sheet.getRange(2, 8, rowCount, 1).setNumberFormat('0.00');
   sheet.getRange(2, 9, rowCount, 1).setNumberFormat('"UAH" #,##0.00');
@@ -1614,14 +1623,16 @@ function formatDashboardDataSheet_(sheet, rowCount) {
     'Зведення за групами': true,
     'Карантин за групами': true
   };
-  var values = sheet.getRange(2, 1, rowCount, 2).getValues();
+  var values = sheet.getRange(2, 1, rowCount, 9).getValues();
   var inQuarantine = false;
   for (var i = 0; i < values.length; i++) {
     var section = String(values[i][0] || '');
     var label = String(values[i][1] || '');
+    var rightSection = String(values[i][5] || '');
+    var rightLabel = String(values[i][6] || '');
     if (section === 'Карантин за групами') inQuarantine = true;
     if (sections[section]) {
-      sheet.getRange(i + 2, 1, 1, 11)
+      sheet.getRange(i + 2, 1, 1, section === 'Карантин за групами' ? 9 : 10)
         .setBackground('#2f5597')
         .setFontColor('#ffffff')
         .setFontWeight('bold')
@@ -1642,37 +1653,37 @@ function formatDashboardDataSheet_(sheet, rowCount) {
       var row = i + 2;
       sheet.getRange(row, 1, 1, 4).setNumberFormat('0.##');
       sheet.getRange(row, 4, 1, 1).setNumberFormat('"UAH" #,##0.00');
-      sheet.getRange(row, 6, 1, 4).setNumberFormat('0.##');
-      sheet.getRange(row, 9, 1, 1).setNumberFormat('"UAH" #,##0.00');
+      if (rightSection || rightLabel) {
+        sheet.getRange(row, 6, 1, 4).setNumberFormat('0.##');
+        sheet.getRange(row, 9, 1, 1).setNumberFormat('"UAH" #,##0.00');
+      }
       if (section && !label) {
         sheet.getRange(row, 1, 1, 4)
           .setBackground('#2f5597')
           .setFontColor('#ffffff')
           .setFontWeight('bold')
           .setHorizontalAlignment('left');
-        sheet.getRange(row, 6, 1, 4)
-          .setBackground('#2f5597')
-          .setFontColor('#ffffff')
-          .setFontWeight('bold')
-          .setHorizontalAlignment('left');
+        if (rightSection || rightLabel) {
+          sheet.getRange(row, 6, 1, 4)
+            .setBackground('#2f5597')
+            .setFontColor('#ffffff')
+            .setFontWeight('bold')
+            .setHorizontalAlignment('left');
+        }
       } else if (section === 'Причина') {
         sheet.getRange(row, 1, 1, 4)
           .setBackground('#4a86e8')
           .setFontColor('#ffffff')
           .setFontWeight('bold')
           .setHorizontalAlignment('center');
-        sheet.getRange(row, 6, 1, 4)
-          .setBackground('#4a86e8')
-          .setFontColor('#ffffff')
-          .setFontWeight('bold')
-          .setHorizontalAlignment('center');
+        if (rightSection || rightLabel) {
+          sheet.getRange(row, 6, 1, 4)
+            .setBackground('#4a86e8')
+            .setFontColor('#ffffff')
+            .setFontWeight('bold')
+            .setHorizontalAlignment('center');
+        }
       }
-    } else if (section === 'Пріоритет' && (label === '' || label === 'Етап' || label === 'Причина')) {
-      sheet.getRange(i + 2, 1, 1, 11)
-        .setBackground('#4a86e8')
-        .setFontColor('#ffffff')
-        .setFontWeight('bold')
-        .setHorizontalAlignment('center');
     }
   }
 }
