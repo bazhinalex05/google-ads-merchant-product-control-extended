@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-9';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-2';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-10';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-3';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1294,7 +1294,7 @@ function dashboardWideRow_(value) {
 
 
 function dashboardHeaderRow_(title) {
-  return [title, 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка', '', ''];
+  return [title, 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', '', '', '', '', ''];
 }
 
 
@@ -1310,9 +1310,9 @@ function dashboardAppendAggSection_(rows, title, items, totalProducts) {
       item.conversions,
       item.value,
       item.cost,
-      item.roas,
-      item.cpa,
-      totalProducts ? item.products / totalProducts : 0,
+      '',
+      '',
+      '',
       '',
       ''
     ]);
@@ -1417,9 +1417,11 @@ function formatDashboardDataSheet_(sheet, rowCount) {
 function formatDashboardSheet_(sheet, rowCount) {
   sheet.setFrozenRows(1);
   sheet.setColumnWidth(1, 260);
-  sheet.setColumnWidths(2, 9, 112);
-  sheet.setColumnWidth(11, 24);
-  sheet.setColumnWidth(12, 28);
+  sheet.setColumnWidth(2, 112);
+  sheet.setColumnWidths(3, 4, 92);
+  sheet.setColumnWidth(7, 118);
+  sheet.setColumnWidth(8, 18);
+  sheet.setColumnWidths(9, 4, 92);
   sheet.getRange(2, 1, rowCount, 12).setWrap(false).setVerticalAlignment('middle');
   sheet.getRange(2, 1, 1, 12).setFontSize(13).setFontWeight('bold');
   sheet.getRange(2, 1, rowCount, 12).setBorder(true, true, true, true, true, true, '#b7c9e8', SpreadsheetApp.BorderStyle.SOLID);
@@ -1438,20 +1440,17 @@ function formatDashboardSheet_(sheet, rowCount) {
     var row = i + 2;
     var label = String(firstCol[i][0] || '');
     if (headerTitles[label]) {
-      sheet.getRange(row, 1, 1, 10)
+      sheet.getRange(row, 1, 1, 7)
         .setBackground('#4a86e8')
         .setFontColor('#ffffff')
         .setFontWeight('bold')
         .setHorizontalAlignment('center');
     } else if (label) {
-      sheet.getRange(row, 1, 1, 10).setBackground('#eef4ff');
+      sheet.getRange(row, 1, 1, 7).setBackground('#eef4ff');
     }
   }
-  sheet.getRange(2, 2, rowCount, 9).setNumberFormat('0.##');
+  sheet.getRange(2, 2, rowCount, 6).setNumberFormat('0.##');
   sheet.getRange(2, 6, rowCount, 2).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(2, 8, rowCount, 1).setNumberFormat('0.00');
-  sheet.getRange(2, 9, rowCount, 1).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(2, 10, rowCount, 1).setNumberFormat('0.0%');
 }
 
 
@@ -1462,10 +1461,10 @@ function clearSheetCharts_(sheet) {
 
 
 function buildDashboardCharts_(sheet, rows) {
-  addDashboardCostPieChart_(sheet, rows, 'Етапи воронки', 'Витрати на етапи воронки', 3, 12, 0);
-  addDashboardCostPieChart_(sheet, rows, 'Товари з конверсіями', '% Витрат на конверсійні', 19, 12, 0);
-  addDashboardCostPieChart_(sheet, rows, 'Клікабельні товари', '% Витрат на клікабельні', 35, 12, 0);
-  addDashboardCostPieChart_(sheet, rows, 'Популярні в пошуку', '% Витрат на популярні', 51, 12, 0);
+  addDashboardCostPieChart_(sheet, rows, 'Етапи воронки', 'Витрати на етапи воронки', 4, 9, 0);
+  addDashboardCostPieChart_(sheet, rows, 'Товари з конверсіями', '% Витрат на конверсійні', 4, 12, 0);
+  addDashboardCostPieChart_(sheet, rows, 'Клікабельні товари', '% Витрат на клікабельні', 16, 9, 0);
+  addDashboardCostPieChart_(sheet, rows, 'Популярні в пошуку', '% Витрат на популярні', 16, 12, 0);
 }
 
 
@@ -1479,8 +1478,12 @@ function addDashboardCostPieChart_(sheet, rows, sectionTitle, chartTitle, anchor
     .addRange(labelRange)
     .addRange(costRange)
     .setOption('title', chartTitle)
+    .setOption('width', 270)
+    .setOption('height', 170)
     .setOption('pieHole', 0.35)
-    .setOption('legend', { position: 'right' })
+    .setOption('legend', { position: 'right', textStyle: { fontSize: 10 } })
+    .setOption('titleTextStyle', { fontSize: 13 })
+    .setOption('chartArea', { left: 8, top: 30, width: '70%', height: '72%' })
     .setOption('useFirstColumnAsDomain', true)
     .setPosition(anchorRow, anchorColumn, 0, 0)
     .build();
