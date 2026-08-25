@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-16';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-9';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-17';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-10';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1271,12 +1271,12 @@ function dashboardRows_(model) {
   dashboardAppendAggSection_(rows, 'Популярні', model.impressionSplit);
   while (rows.length < 20) rows.push(dashboardWideRow_(''));
   rows.push(['Загалом', 'за останні 14 днів', 'Карантин', 'Статус', 'Товарів', 'Етап', 'Витрати']);
-  rows.push(['Товарів', 'ROAS', 'Усього в карантині', 'реєстр', model.quarantine.active, model.stages[0].name, model.stages[0].cost]);
-  rows.push([model.total.products, model.total.roas, 'Кліки без продажів', 'увімкнено', model.quarantine.noSales, model.stages[1].name, model.stages[1].cost]);
-  rows.push(['CPA', 'Конверсії', 'Витрати > % ціни', 'увімкнено', model.quarantine.spend, model.stages[2].name, model.stages[2].cost]);
-  rows.push([model.total.cpa, model.total.conversions, 'Дорогий клік', 'увімкнено', model.quarantine.expensiveClick, model.stages[3].name, model.stages[3].cost]);
-  rows.push(['Цінність конв.', 'Витрати', 'У вибірці в карантині', '', model.quarantineCount, model.stages[4].name, model.stages[4].cost]);
-  rows.push([model.total.value, model.total.cost, 'Виключено у вибірці', '', model.excludedCount, model.stages[5].name, model.stages[5].cost]);
+  rows.push(['Товарів', model.total.products, 'Усього в карантині', 'реєстр', model.quarantine.active, model.stages[0].name, model.stages[0].cost]);
+  rows.push(['Витрати', model.total.cost, 'Кліки без продажів', 'увімкнено', model.quarantine.noSales, model.stages[1].name, model.stages[1].cost]);
+  rows.push(['Конверсії', model.total.conversions, 'Витрати > % ціни', 'увімкнено', model.quarantine.spend, model.stages[2].name, model.stages[2].cost]);
+  rows.push(['CPA', model.total.cpa, 'Дорогий клік', 'увімкнено', model.quarantine.expensiveClick, model.stages[3].name, model.stages[3].cost]);
+  rows.push(['ROAS', model.total.roas, 'У вибірці в карантині', '', model.quarantineCount, model.stages[4].name, model.stages[4].cost]);
+  rows.push(['Цінність конв.', model.total.value, 'Виключено у вибірці', '', model.excludedCount, model.stages[5].name, model.stages[5].cost]);
   return rows;
 }
 
@@ -1438,12 +1438,13 @@ function formatDashboardSheet_(sheet, rowCount) {
   formatDashboardSummaryBlock_(sheet, 22, 6, 7, 2);
   sheet.getRange(23, 5, 6, 1).setNumberFormat('0');
   sheet.getRange(23, 7, 6, 1).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(28, 1, 1, 1).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(28, 2, 1, 1).setNumberFormat('"UAH" #,##0.00');
   sheet.getRange(2, 2, 11, 4).setNumberFormat('0.##');
   sheet.getRange(2, 6, 11, 2).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(23, 1, 6, 2).setNumberFormat('0.##');
-  sheet.getRange(28, 1, 1, 2).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(23, 1, 6, 1).setNumberFormat('@');
+  sheet.getRange(23, 2, 6, 1).setNumberFormat('0.##');
+  sheet.getRange(24, 2, 1, 1).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(26, 2, 1, 1).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(28, 2, 1, 1).setNumberFormat('"UAH" #,##0.00');
 }
 
 
