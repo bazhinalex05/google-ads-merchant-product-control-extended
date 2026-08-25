@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-19';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-12';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-20';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-13';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1428,6 +1428,7 @@ function formatDashboardSheet_(sheet, rowCount) {
     'Клікабельні': true,
     'Популярні': true
   };
+  var separatorColor = '#2f5597';
   var firstCol = sheet.getRange(2, 1, rowCount, 1).getValues();
   for (var i = 0; i < firstCol.length; i++) {
     var row = i + 2;
@@ -1437,7 +1438,8 @@ function formatDashboardSheet_(sheet, rowCount) {
         .setBackground('#4a86e8')
         .setFontColor('#ffffff')
         .setFontWeight('bold')
-        .setHorizontalAlignment('center');
+        .setHorizontalAlignment('center')
+        .setBorder(true, null, null, null, null, null, separatorColor, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
     } else if (label) {
       sheet.getRange(row, 1, 1, 7).setBackground('#eef4ff');
     }
@@ -1445,6 +1447,8 @@ function formatDashboardSheet_(sheet, rowCount) {
   formatDashboardSummaryBlock_(sheet, 24, 1, 7, 2);
   formatDashboardSummaryBlock_(sheet, 24, 3, 7, 3);
   formatDashboardSummaryBlock_(sheet, 24, 6, 7, 2);
+  sheet.getRange(24, 2, 7, 1).setBorder(null, null, null, true, null, null, separatorColor, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  sheet.getRange(24, 5, 7, 1).setBorder(null, null, null, true, null, null, separatorColor, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
   sheet.getRange(25, 5, 6, 1).setNumberFormat('0');
   sheet.getRange(30, 5, 1, 1).setNumberFormat('"UAH" #,##0.00');
   sheet.getRange(25, 7, 6, 1).setNumberFormat('"UAH" #,##0.00');
@@ -1465,7 +1469,7 @@ function formatDashboardSummaryBlock_(sheet, startRow, startCol, numRows, numCol
     .setFontWeight('normal')
     .setHorizontalAlignment('center')
     .setVerticalAlignment('middle')
-    .setBorder(true, true, true, true, false, false, '#000000', SpreadsheetApp.BorderStyle.SOLID);
+    .setBorder(false, false, false, false, false, false);
   sheet.getRange(startRow, startCol, 1, numCols)
     .setBackground('#4a86e8')
     .setFontColor('#ffffff')
@@ -1486,9 +1490,9 @@ function buildDashboardCharts_(sheet) {
   var chartWidth = 287;
   var chartHeight = 188;
   var gap = 0;
-  addDashboardPieChart_(sheet, chartRow, chartCol, '% Витрат на конверсійні', 5, 1, 7, 0, 0, chartWidth, chartHeight);
-  addDashboardPieChart_(sheet, chartRow, chartCol, '% Витрат на клікабельні', 8, 1, 7, chartWidth + gap, 0, chartWidth, chartHeight);
-  addDashboardPieChart_(sheet, chartRow, chartCol, '% Витрат на популярні', 11, 1, 7, (chartWidth + gap) * 2, 0, chartWidth, chartHeight);
+  addDashboardPieChart_(sheet, chartRow, chartCol, '% Витрат на конверсійні', 5, 1, 7, 0, 0, chartWidth, chartHeight, ['#4285f4', '#fbbc04']);
+  addDashboardPieChart_(sheet, chartRow, chartCol, '% Витрат на клікабельні', 8, 1, 7, chartWidth + gap, 0, chartWidth, chartHeight, ['#fbbc04', '#4285f4']);
+  addDashboardPieChart_(sheet, chartRow, chartCol, '% Витрат на популярні', 11, 1, 7, (chartWidth + gap) * 2, 0, chartWidth, chartHeight, ['#fbbc04', '#4285f4']);
 
   var stageChart = sheet.newChart()
     .asBarChart()
@@ -1504,13 +1508,14 @@ function buildDashboardCharts_(sheet) {
 }
 
 
-function addDashboardPieChart_(sheet, posRow, posCol, title, dataRow, labelCol, valueCol, offsetX, offsetY, width, height) {
+function addDashboardPieChart_(sheet, posRow, posCol, title, dataRow, labelCol, valueCol, offsetX, offsetY, width, height, colors) {
   var chart = sheet.newChart()
     .asPieChart()
     .addRange(sheet.getRange(dataRow, labelCol, 2, 1))
     .addRange(sheet.getRange(dataRow, valueCol, 2, 1))
     .setOption('title', title)
     .setOption('pieHole', 0.45)
+    .setOption('colors', colors || ['#4285f4', '#fbbc04'])
     .setOption('width', width || 287)
     .setOption('height', height || 188)
     .setPosition(posRow, posCol, offsetX || 0, offsetY || 0)
