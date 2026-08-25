@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-23';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-14';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-24';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-15';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1141,7 +1141,7 @@ function buildDashboardData_(ctx) {
 
   var model = dashboardModel_(ctx, diagRows, state);
   var rows = dashboardDataRows_(model);
-  ensureDashboardRefreshControl_(sheet, 'Перебудувати DashboardData при наступному запуску', false);
+  ensureDashboardRefreshControl_(sheet, 'Перебудувати DashboardData при наступному запуску', true);
   sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   if (rebuild) formatDashboardDataSheet_(sheet, rows.length);
   return model;
@@ -1153,12 +1153,12 @@ function buildDashboard_(ctx, model) {
   ensureSheetColumns_(sheet, 7);
   var rebuild = dashboardRefreshRequested_(sheet, 'Перебудувати Dashboard при наступному запуску');
   if (!rebuild) {
-    ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', false);
+    ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', true);
     return;
   }
   sheet.clear();
   clearSheetCharts_(sheet);
-  ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', false);
+  ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', true);
   var rows = dashboardRows_(model);
   sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   formatDashboardSheet_(sheet, rows.length);
