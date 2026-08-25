@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-33';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-23';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-34';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-24';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1584,8 +1584,7 @@ function quarantineReasonCostBreakdown_(id, registryRow, statsByPeriod, prices, 
 function formatDashboardDataSheet_(sheet, rowCount) {
   sheet.setFrozenRows(1);
   sheet.setColumnWidth(1, 170);
-  sheet.setColumnWidths(2, 4, 92);
-  sheet.setColumnWidth(6, 28);
+  sheet.setColumnWidths(2, 5, 92);
   sheet.setColumnWidth(7, 170);
   sheet.setColumnWidths(8, 4, 92);
   var area = sheet.getRange(2, 1, rowCount, 11);
@@ -1599,10 +1598,6 @@ function formatDashboardDataSheet_(sheet, rowCount) {
     .setBorder(false, false, false, false, false, false)
     .setNumberFormat('General');
   sheet.getRange(2, 1, rowCount, 1).setNumberFormat('@');
-  sheet.getRange(2, 2, rowCount, 4).setNumberFormat('0.##');
-  sheet.getRange(2, 6, rowCount, 2).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(2, 8, rowCount, 2).setNumberFormat('0.##');
-  sheet.getRange(2, 10, rowCount, 2).setNumberFormat('0.##');
   var values = sheet.getRange(2, 1, rowCount, 11).getValues();
   var sectionColor = '#2f5597';
   var headerColor = '#4a86e8';
@@ -1611,10 +1606,18 @@ function formatDashboardDataSheet_(sheet, rowCount) {
   var inSummary = false;
   for (var i = 0; i < values.length; i++) {
     var row = i + 2;
-    var leftA = String(values[i][0] || '');
-    var leftB = String(values[i][1] || '');
-    var rightG = String(values[i][6] || '');
-    var rightH = String(values[i][7] || '');
+    var leftAValue = values[i][0];
+    var leftBValue = values[i][1];
+    var rightGValue = values[i][6];
+    var rightHValue = values[i][7];
+    var leftA = String(leftAValue === null || leftAValue === undefined ? '' : leftAValue);
+    var leftB = String(leftBValue === null || leftBValue === undefined ? '' : leftBValue);
+    var rightG = String(rightGValue === null || rightGValue === undefined ? '' : rightGValue);
+    var rightH = String(rightHValue === null || rightHValue === undefined ? '' : rightHValue);
+    var hasLeftA = leftA !== '';
+    var hasLeftB = leftB !== '';
+    var hasRightG = rightG !== '';
+    var hasRightH = rightH !== '';
     if (leftA === 'Зведення benchmark-груп') {
       sheet.getRange(row, 1, 1, 10)
         .setBackground(sectionColor)
@@ -1642,16 +1645,22 @@ function formatDashboardDataSheet_(sheet, rowCount) {
         .setHorizontalAlignment('center');
       continue;
     }
-    if (inSummary && leftA && leftB) {
+    if (inSummary && hasLeftA && hasLeftB) {
+      sheet.getRange(row, 2, 1, 4).setNumberFormat('0.##');
       sheet.getRange(row, 6, 1, 2).setNumberFormat('"UAH" #,##0.00');
       sheet.getRange(row, 8, 1, 1).setNumberFormat('0.00');
       sheet.getRange(row, 9, 1, 1).setNumberFormat('"UAH" #,##0.00');
       sheet.getRange(row, 10, 1, 1).setNumberFormat('0.0%');
     }
-    if (leftB || leftA) {
+    if (!inSummary && (hasLeftA || hasLeftB)) {
+      sheet.getRange(row, 1, 1, 5).setBackground(fillColor);
+    } else if (inSummary && (hasLeftA || hasLeftB)) {
       sheet.getRange(row, 1, 1, 10).setBackground(fillColor);
     }
-    if (leftA && !leftB && leftA !== 'Група') {
+    if (!inSummary && (hasRightG || hasRightH)) {
+      sheet.getRange(row, 7, 1, 5).setBackground(fillColor);
+    }
+    if (hasLeftA && !hasLeftB && leftA !== 'Група') {
       sheet.getRange(row, 1, 1, 5)
         .setBackground(sectionColor)
         .setFontColor('#ffffff')
@@ -1659,7 +1668,7 @@ function formatDashboardDataSheet_(sheet, rowCount) {
         .setHorizontalAlignment('left')
         .setBorder(true, null, null, null, null, null, borderColor, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
     }
-    if (rightG && !rightH) {
+    if (hasRightG && !hasRightH) {
       sheet.getRange(row, 7, 1, 5)
         .setBackground(sectionColor)
         .setFontColor('#ffffff')
