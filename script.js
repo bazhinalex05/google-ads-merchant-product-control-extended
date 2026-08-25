@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-14';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-7';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-15';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-8';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1408,15 +1408,17 @@ function formatDashboardSheet_(sheet, rowCount) {
   sheet.setRowHeights(13, 9, 21);
   ensureSheetRows_(sheet, 35);
   ensureSheetColumns_(sheet, 7);
-  sheet.getRange(2, 1, rowCount, 7).setWrap(false).setVerticalAlignment('middle');
+  sheet.getRange(2, 1, rowCount, 7)
+    .setWrap(false)
+    .setVerticalAlignment('middle')
+    .setHorizontalAlignment('center');
   sheet.getRange(2, 1, rowCount, 7).setBorder(true, true, true, true, true, true, '#b7c9e8', SpreadsheetApp.BorderStyle.SOLID);
   sheet.getRange(2, 1, rowCount, 7).setBackground('#ffffff').setFontColor('#000000').setFontWeight('normal');
   sheet.getRange(2, 1, 1, 7).setFontSize(13).setFontWeight('bold');
   var headerTitles = {
     'Конверсійні': true,
     'Клікабельні': true,
-    'Популярні': true,
-    'Загалом': true
+    'Популярні': true
   };
   var firstCol = sheet.getRange(2, 1, rowCount, 1).getValues();
   for (var i = 0; i < firstCol.length; i++) {
@@ -1432,9 +1434,9 @@ function formatDashboardSheet_(sheet, rowCount) {
       sheet.getRange(row, 1, 1, 7).setBackground('#eef4ff');
     }
   }
-  sheet.getRange(22, 3, 8, 5).setBorder(true, true, true, true, true, true, '#000000', SpreadsheetApp.BorderStyle.SOLID);
-  sheet.getRange(22, 3, 1, 5).setBackground('#4a86e8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
-  sheet.getRange(22, 6, 1, 2).setBackground('#4a86e8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
+  formatDashboardSummaryBlock_(sheet, 22, 1, 8, 2);
+  formatDashboardSummaryBlock_(sheet, 22, 3, 8, 3);
+  formatDashboardSummaryBlock_(sheet, 22, 6, 7, 2);
   sheet.getRange(23, 5, 4, 1).setNumberFormat('0');
   sheet.getRange(28, 5, 2, 1).setNumberFormat('0');
   sheet.getRange(23, 7, 6, 1).setNumberFormat('"UAH" #,##0.00');
@@ -1444,6 +1446,22 @@ function formatDashboardSheet_(sheet, rowCount) {
   sheet.getRange(2, 6, 11, 2).setNumberFormat('"UAH" #,##0.00');
   sheet.getRange(23, 1, 6, 2).setNumberFormat('0.##');
   sheet.getRange(28, 1, 1, 2).setNumberFormat('"UAH" #,##0.00');
+}
+
+
+function formatDashboardSummaryBlock_(sheet, startRow, startCol, numRows, numCols) {
+  sheet.getRange(startRow, startCol, numRows, numCols)
+    .setBackground('#eef4ff')
+    .setFontColor('#000000')
+    .setFontWeight('normal')
+    .setHorizontalAlignment('center')
+    .setVerticalAlignment('middle')
+    .setBorder(true, true, true, true, true, true, '#000000', SpreadsheetApp.BorderStyle.SOLID);
+  sheet.getRange(startRow, startCol, 1, numCols)
+    .setBackground('#4a86e8')
+    .setFontColor('#ffffff')
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center');
 }
 
 
