@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-22';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-13';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-23';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-14';
 
 
 var SETTINGS_SHEET = 'Settings';
