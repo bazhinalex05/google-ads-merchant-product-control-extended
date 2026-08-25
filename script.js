@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-24';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-15';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-25';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-16';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1141,7 +1141,7 @@ function buildDashboardData_(ctx) {
 
   var model = dashboardModel_(ctx, diagRows, state);
   var rows = dashboardDataRows_(model);
-  ensureDashboardRefreshControl_(sheet, 'Перебудувати DashboardData при наступному запуску', true);
+  ensureDashboardRefreshControl_(sheet, 'Перебудувати DashboardData при наступному запуску', rebuild);
   sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   if (rebuild) formatDashboardDataSheet_(sheet, rows.length);
   return model;
@@ -1153,12 +1153,12 @@ function buildDashboard_(ctx, model) {
   ensureSheetColumns_(sheet, 7);
   var rebuild = dashboardRefreshRequested_(sheet, 'Перебудувати Dashboard при наступному запуску');
   if (!rebuild) {
-    ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', true);
+    ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', false);
     return;
   }
   sheet.clear();
   clearSheetCharts_(sheet);
-  ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', true);
+  ensureDashboardRefreshControl_(sheet, 'Перебудувати Dashboard при наступному запуску', rebuild);
   var rows = dashboardRows_(model);
   sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   formatDashboardSheet_(sheet, rows.length);
@@ -1170,9 +1170,11 @@ function dashboardRefreshRequested_(sheet, expectedLabel) {
   if (sheet.getLastRow() < 2) return true;
   var label = String(sheet.getRange(1, 1).getValue() || '');
   if (label !== expectedLabel) return true;
+  var manualEnabled = bool_(sheet.getRange(1, 2).getValue(), true);
+  if (!manualEnabled) return false;
   var layoutBuild = String(sheet.getRange(1, 3).getValue() || '');
   if (layoutBuild !== DASHBOARD_LAYOUT_BUILD) return true;
-  return bool_(sheet.getRange(1, 2).getValue(), true);
+  return true;
 }
 
 
@@ -1202,7 +1204,6 @@ function dashboardModel_(ctx, diagRows, state) {
   var highImpressions = emptyDashboardAgg_('високі покази');
   var lowImpressions = emptyDashboardAgg_('низькі покази');
   var stages = {};
-  var productTypes = {};
   var excludedCount = 0;
   var quarantineCount = 0;
 
@@ -1213,7 +1214,6 @@ function dashboardModel_(ctx, diagRows, state) {
     var aggRow = dashboardAggRow_(row);
     addDashboardAgg_(total, aggRow);
     addDashboardAgg_(stages[stage] || (stages[stage] = emptyDashboardAgg_(stage)), aggRow);
-    addDashboardAgg_(productTypes[path] || (productTypes[path] = emptyDashboardAgg_(path)), aggRow);
     if (aggRow.conversions > 0) addDashboardAgg_(sales, aggRow);
     else addDashboardAgg_(noSales, aggRow);
     if (aggRow.conversions > 0 || stage.indexOf('вк') !== -1) addDashboardAgg_(highClicks, aggRow);
@@ -1226,10 +1226,9 @@ function dashboardModel_(ctx, diagRows, state) {
 
   var statsByPeriod = readStatsByPeriod_(ctx.sheets.adsStatsSnapshot);
   var prices = readMerchantPriceMap_(ctx.sheets.merchantSnapshot);
-  var quarantine = dashboardQuarantineModel_(ctx.sheets.quarantineRegistry, statsByPeriod, prices, ctx.settings);
-  var topProductTypes = [];
-  for (var pathKey in productTypes) topProductTypes.push(finalizeDashboardAgg_(productTypes[pathKey]));
-  topProductTypes.sort(function(a, b) { return b.cost - a.cost; });
+  var quarantineRegistry = readQuarantineRegistry_(ctx.sheets.quarantineRegistry);
+  var quarantine = dashboardQuarantineModel_(quarantineRegistry, statsByPeriod, prices, ctx.settings);
+  var priorities = dashboardPriorityModel_(diagRows, quarantineRegistry, statsByPeriod, prices, ctx.settings);
 
   return {
     state: state,
@@ -1239,7 +1238,7 @@ function dashboardModel_(ctx, diagRows, state) {
     impressionSplit: [finalizeDashboardAgg_(highImpressions), finalizeDashboardAgg_(lowImpressions)],
     stages: dashboardStageAggs_(stages),
     quarantine: quarantine,
-    topProductTypes: topProductTypes,
+    priorities: priorities,
     excludedCount: excludedCount,
     quarantineCount: quarantineCount,
     productTypePathCount: countProductTypePaths_(ctx.sheets.productTypes),
@@ -1289,8 +1288,22 @@ function dashboardDataRows_(model) {
   rows.push(['quarantine', 'Нові сьогодні', model.quarantine.newToday, '', '', '', '', '', '', '', '']);
   rows.push(['quarantine', 'Витрати карантину', '', '', '', '', '', model.quarantine.activeCost, '', '', '']);
   rows.push(blank);
-  rows.push(['product_type_cost', 'item', 'products', 'impressions', 'clicks', 'conversions', 'conversion_value', 'cost', 'roas', 'cpa', 'share']);
-  for (var j = 0; j < model.topProductTypes.length; j++) rows.push(dashboardDataAggRow_('product_type_cost', model.topProductTypes[j], model.total.products));
+  rows.push(['priority_summary', 'priority', 'products', 'in_quarantine', 'new_today', 'excluded', 'cost', 'quarantine_cost', 'impressions', 'clicks', 'conversions']);
+  for (var j = 0; j < model.priorities.length; j++) rows.push(dashboardPrioritySummaryRow_(model.priorities[j]));
+  rows.push(blank);
+  rows.push(['priority_funnel', 'priority', 'stage', 'products', 'impressions', 'clicks', 'conversions', 'conversion_value', 'cost', 'share_in_priority', '']);
+  for (var p = 0; p < model.priorities.length; p++) {
+    var priority = model.priorities[p];
+    for (var s = 0; s < priority.stages.length; s++) rows.push(dashboardPriorityFunnelRow_(priority, priority.stages[s]));
+  }
+  rows.push(blank);
+  rows.push(['priority_quarantine', 'priority', 'reason', 'products', 'status', '', 'quarantine_cost', '', '', '', '']);
+  for (var q = 0; q < model.priorities.length; q++) {
+    var pr = model.priorities[q];
+    rows.push(dashboardPriorityQuarantineRow_(pr, 'Кліки без продажів', 'noSales', dashboardEnabledStatus_(model.quarantine.noSalesEnabled)));
+    rows.push(dashboardPriorityQuarantineRow_(pr, 'Витрати > % ціни', 'spend', dashboardEnabledStatus_(model.quarantine.spendEnabled)));
+    rows.push(dashboardPriorityQuarantineRow_(pr, 'Дорогий клік', 'expensiveClick', dashboardEnabledStatus_(model.quarantine.expensiveClickEnabled)));
+  }
   return rows;
 }
 
@@ -1378,6 +1391,57 @@ function dashboardDataAggRow_(section, agg, totalProducts) {
 }
 
 
+function dashboardPrioritySummaryRow_(priority) {
+  return [
+    'priority_summary',
+    priority.name,
+    priority.total.products,
+    priority.quarantine.active,
+    priority.quarantine.newToday,
+    priority.excluded,
+    priority.total.cost,
+    priority.quarantine.cost,
+    priority.total.impressions,
+    priority.total.clicks,
+    priority.total.conversions
+  ];
+}
+
+
+function dashboardPriorityFunnelRow_(priority, stage) {
+  return [
+    'priority_funnel',
+    priority.name,
+    stage.name,
+    stage.products,
+    stage.impressions,
+    stage.clicks,
+    stage.conversions,
+    stage.value,
+    stage.cost,
+    priority.total.products ? stage.products / priority.total.products : 0,
+    ''
+  ];
+}
+
+
+function dashboardPriorityQuarantineRow_(priority, label, key, status) {
+  return [
+    'priority_quarantine',
+    priority.name,
+    label,
+    priority.quarantine[key].products,
+    status,
+    '',
+    priority.quarantine[key].cost,
+    '',
+    '',
+    '',
+    ''
+  ];
+}
+
+
 function dashboardStageAggs_(stages) {
   var order = ['1 продажі', '2 вк+вп', '3 вк+нп', '4 нк+вп', '5 нк+нп', '6 без стат'];
   var out = [];
@@ -1386,9 +1450,75 @@ function dashboardStageAggs_(stages) {
 }
 
 
-function dashboardQuarantineModel_(sheet, statsByPeriod, prices, settings) {
+function dashboardPriorityModel_(diagRows, registry, statsByPeriod, prices, settings) {
   var today = dateOnly_(new Date());
-  var registry = readQuarantineRegistry_(sheet);
+  var map = {};
+  var names = [];
+  for (var i = 0; i < diagRows.length; i++) {
+    var row = diagRows[i];
+    var rawId = String(row[0] || '');
+    var id = normOfferId_(rawId);
+    var priority = String(row[3] || 'other').trim() || 'other';
+    var stage = String(row[5] || '6 без стат');
+    if (!map[priority]) {
+      map[priority] = emptyDashboardPriority_(priority);
+      names.push(priority);
+    }
+    var item = map[priority];
+    var aggRow = dashboardAggRow_(row);
+    addDashboardAgg_(item.total, aggRow);
+    addDashboardAgg_(item.stageMap[stage] || (item.stageMap[stage] = emptyDashboardAgg_(stage)), aggRow);
+    if (row[13] || row[14]) item.excluded++;
+
+    var r = registry[id] || registry[rawId];
+    if (!r || !isActiveDate_(r.active_until, today)) continue;
+    item.quarantine.active++;
+    if (String(r.last_added || '').substring(0, 10) === today) item.quarantine.newToday++;
+    var reason = quarantineReasonCostBreakdown_(id, r, statsByPeriod, prices, settings, today);
+    item.quarantine.cost += reason.cost;
+    if (reason.key && item.quarantine[reason.key]) {
+      item.quarantine[reason.key].products++;
+      item.quarantine[reason.key].cost += reason.cost;
+    }
+  }
+  names.sort(function(a, b) {
+    if (a === 'other') return 1;
+    if (b === 'other') return -1;
+    return a.localeCompare(b);
+  });
+  var out = [];
+  for (var n = 0; n < names.length; n++) {
+    var p = map[names[n]];
+    p.total = finalizeDashboardAgg_(p.total);
+    p.stages = dashboardStageAggs_(p.stageMap);
+    out.push(p);
+  }
+  return out;
+}
+
+
+function emptyDashboardPriority_(name) {
+  return {
+    name: name,
+    total: emptyDashboardAgg_(name),
+    stageMap: {},
+    stages: [],
+    excluded: 0,
+    quarantine: {
+      active: 0,
+      newToday: 0,
+      cost: 0,
+      noSales: { products: 0, cost: 0 },
+      spend: { products: 0, cost: 0 },
+      expensiveClick: { products: 0, cost: 0 }
+    }
+  };
+}
+
+
+function dashboardQuarantineModel_(registry, statsByPeriod, prices, settings) {
+  var today = dateOnly_(new Date());
+  registry = registry || {};
   settings = settings || {};
   var masterEnabled = settings.enableQuarantine !== false;
   var out = {
@@ -1423,6 +1553,11 @@ function dashboardEnabledStatus_(enabled) {
 
 
 function quarantineReasonCost_(id, registryRow, statsByPeriod, prices, settings, today) {
+  return quarantineReasonCostBreakdown_(id, registryRow, statsByPeriod, prices, settings, today).cost;
+}
+
+
+function quarantineReasonCostBreakdown_(id, registryRow, statsByPeriod, prices, settings, today) {
   statsByPeriod = statsByPeriod || {};
   prices = prices || {};
   settings = settings || {};
@@ -1431,23 +1566,23 @@ function quarantineReasonCost_(id, registryRow, statsByPeriod, prices, settings,
   if (noSales && isActiveDate_(registryRow.no_sales_until, today)) {
     var noSalesClicks = Math.max(0, num_(noSales.clicks, 0));
     var noSalesCpc = noSalesClicks > 0 ? num_(noSales.cost, 0) / noSalesClicks : 0;
-    candidates.push(Math.min(noSalesClicks, Math.max(0, num_(settings.noSalesClickThreshold, 0))) * noSalesCpc);
+    candidates.push({ key: 'noSales', cost: Math.min(noSalesClicks, Math.max(0, num_(settings.noSalesClickThreshold, 0))) * noSalesCpc });
   }
   var spend = statsByPeriod.spend_over_margin && statsByPeriod.spend_over_margin[id];
   if (spend && isActiveDate_(registryRow.spend_until, today)) {
     var price = Math.max(0, num_(prices[id], 0));
     var threshold = price > 0 ? price * Math.max(0, num_(settings.spendOverMarginShare, 0)) : 0;
     var spendCost = Math.max(0, num_(spend.cost, 0));
-    candidates.push(threshold > 0 ? Math.min(spendCost, threshold) : spendCost);
+    candidates.push({ key: 'spend', cost: threshold > 0 ? Math.min(spendCost, threshold) : spendCost });
   }
   var expensive = statsByPeriod.expensive_click && statsByPeriod.expensive_click[id];
   if (expensive && isActiveDate_(registryRow.expensive_click_until, today)) {
     var expensiveClicks = Math.max(0, num_(expensive.clicks, 0));
-    candidates.push(expensiveClicks > 0 ? Math.max(0, num_(expensive.cost, 0)) / expensiveClicks : 0);
+    candidates.push({ key: 'expensiveClick', cost: expensiveClicks > 0 ? Math.max(0, num_(expensive.cost, 0)) / expensiveClicks : 0 });
   }
-  var out = 0;
+  var out = { key: '', cost: 0 };
   for (var i = 0; i < candidates.length; i++) {
-    if (candidates[i] > out) out = candidates[i];
+    if (candidates[i].cost > out.cost) out = candidates[i];
   }
   return out;
 }
@@ -1463,13 +1598,28 @@ function formatDashboardDataSheet_(sheet, rowCount) {
   sheet.getRange(2, 9, rowCount, 1).setNumberFormat('0.00');
   sheet.getRange(2, 10, rowCount, 1).setNumberFormat('"UAH" #,##0.00');
   sheet.getRange(2, 11, rowCount, 1).setNumberFormat('0.0%');
-  var headerRows = [2, 16, 20, 24, 28, 36, 42];
-  for (var i = 0; i < headerRows.length; i++) {
-    sheet.getRange(headerRows[i], 1, 1, 11)
-      .setBackground('#4a86e8')
-      .setFontColor('#ffffff')
-      .setFontWeight('bold')
-      .setHorizontalAlignment('center');
+  var sections = {
+    'section': true,
+    'sales_split': true,
+    'click_split': true,
+    'impression_split': true,
+    'funnel_stage': true,
+    'quarantine': true,
+    'priority_summary': true,
+    'priority_funnel': true,
+    'priority_quarantine': true
+  };
+  var values = sheet.getRange(2, 1, rowCount, 2).getValues();
+  for (var i = 0; i < values.length; i++) {
+    var section = String(values[i][0] || '');
+    var label = String(values[i][1] || '');
+    if (sections[section] && (label === 'item' || label === 'priority' || label === 'stage')) {
+      sheet.getRange(i + 2, 1, 1, 11)
+        .setBackground('#4a86e8')
+        .setFontColor('#ffffff')
+        .setFontWeight('bold')
+        .setHorizontalAlignment('center');
+    }
   }
 }
 
@@ -1511,6 +1661,7 @@ function formatDashboardSheet_(sheet, rowCount) {
   formatDashboardSummaryBlock_(sheet, 24, 1, 7, 2);
   formatDashboardSummaryBlock_(sheet, 24, 3, 7, 3);
   formatDashboardSummaryBlock_(sheet, 24, 6, 7, 2);
+  sheet.getRange(24, 1, 1, 7).setBorder(true, null, null, null, null, null, separatorColor, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
   sheet.getRange(24, 2, 7, 1).setBorder(null, null, null, true, null, null, separatorColor, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
   sheet.getRange(24, 5, 7, 1).setBorder(null, null, null, true, null, null, separatorColor, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
   sheet.getRange(25, 5, 6, 1).setNumberFormat('0');
