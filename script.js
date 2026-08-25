@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-32';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-22';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-33';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-23';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1268,38 +1268,50 @@ function dashboardModel_(ctx, diagRows, state) {
 function dashboardDataRows_(model) {
   var blank = ['', '', '', '', '', '', '', '', '', '', ''];
   var rows = [];
-  rows.push(['Зведення за групами', '', '', '', '', '', '', '', '', '', '']);
+  rows.push(['Зведення benchmark-груп', '', '', '', '', '', '', '', '', '', '']);
   rows.push(['Група', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка', '']);
   for (var i = 0; i < model.priorities.length; i++) rows.push(dashboardBenchmarkSummaryRow_(model.priorities[i], model.total.products));
   rows.push(blank);
-  for (var p = 0; p < model.priorities.length; p++) {
-    var priority = model.priorities[p];
-    rows.push([dashboardDisplayPriorityName_(priority.name), '', '', '', '', '', '', '', '', '', '']);
-    rows.push(['Етап', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка', '']);
-    for (var s = 0; s < priority.stages.length; s++) rows.push(dashboardPriorityFunnelRow_(priority, priority.stages[s]));
-    rows.push(blank);
-  }
-  rows.push(['Карантин за групами', '', '', '', '', '', '', '', '', '', '']);
-  var pairRows = dashboardQuarantinePairRows_(model.priorities);
+
+  rows.push(['Воронка та карантин за benchmark-групами', '', '', '', '', '', '', '', '', '', '']);
+  var pairRows = dashboardBenchmarkPairRows_(model.priorities);
   for (var r = 0; r < pairRows.length; r++) rows.push(pairRows[r]);
   return rows;
 }
 
 
-function dashboardQuarantinePairRows_(priorities) {
+function dashboardBenchmarkPairRows_(priorities) {
   var rows = [];
   for (var i = 0; i < priorities.length; i += 2) {
-    var left = dashboardQuarantineBlockRows_(priorities[i]);
-    var right = i + 1 < priorities.length ? dashboardQuarantineBlockRows_(priorities[i + 1]) : [];
+    var left = dashboardBenchmarkBlockRows_(priorities[i]);
+    var right = i + 1 < priorities.length ? dashboardBenchmarkBlockRows_(priorities[i + 1]) : [];
     var count = Math.max(left.length, right.length);
     for (var r = 0; r < count; r++) {
       var row = ['', '', '', '', '', '', '', '', '', '', ''];
       copyDashboardCells_(row, 0, left[r] || ['', '', '', '', '']);
-      copyDashboardCells_(row, 5, right[r] || ['', '', '', '', '']);
+      copyDashboardCells_(row, 6, right[r] || ['', '', '', '', '']);
       rows.push(row);
     }
     rows.push(['', '', '', '', '', '', '', '', '', '', '']);
   }
+  return rows;
+}
+
+
+function dashboardBenchmarkBlockRows_(priority) {
+  var rows = [];
+  rows.push([dashboardDisplayPriorityName_(priority.name), '', '', '', '']);
+  rows.push(['Воронка', 'Товарів', 'Покази', 'Кліки', 'Витрати']);
+  for (var i = 0; i < priority.stages.length; i++) {
+    var stage = priority.stages[i];
+    rows.push([stage.name, stage.products, stage.impressions, stage.clicks, stage.cost]);
+  }
+  rows.push(['Карантин', 'Статус', 'Товарів', 'Витрати', 'Частка']);
+  rows.push(['Усього в карантині', '', priority.quarantine.active, priority.quarantine.cost, priority.total.products ? priority.quarantine.active / priority.total.products : 0]);
+  rows.push(['Нові сьогодні', '', priority.quarantine.newToday, 0, priority.total.products ? priority.quarantine.newToday / priority.total.products : 0]);
+  rows.push(['Кліки без продажів', dashboardEnabledStatus_(priority.quarantine.noSalesEnabled), priority.quarantine.noSales.products, priority.quarantine.noSales.cost, priority.total.products ? priority.quarantine.noSales.products / priority.total.products : 0]);
+  rows.push(['Витрати > % ціни', dashboardEnabledStatus_(priority.quarantine.spendEnabled), priority.quarantine.spend.products, priority.quarantine.spend.cost, priority.total.products ? priority.quarantine.spend.products / priority.total.products : 0]);
+  rows.push(['Дорогий клік', dashboardEnabledStatus_(priority.quarantine.expensiveClickEnabled), priority.quarantine.expensiveClick.products, priority.quarantine.expensiveClick.cost, priority.total.products ? priority.quarantine.expensiveClick.products / priority.total.products : 0]);
   return rows;
 }
 
@@ -1385,36 +1397,6 @@ function finalizeDashboardAgg_(agg) {
 function dashboardBenchmarkSummaryRow_(priority, totalProducts) {
   var agg = priority.total;
   return [dashboardDisplayPriorityName_(priority.name), agg.products, agg.impressions, agg.clicks, agg.conversions, agg.value, agg.cost, agg.roas, agg.cpa, totalProducts ? agg.products / totalProducts : 0, ''];
-}
-
-
-function dashboardPriorityFunnelRow_(priority, stage) {
-  return [
-    stage.name,
-    stage.products,
-    stage.impressions,
-    stage.clicks,
-    stage.conversions,
-    stage.value,
-    stage.cost,
-    stage.roas,
-    stage.cpa,
-    priority.total.products ? stage.products / priority.total.products : 0,
-    ''
-  ];
-}
-
-
-function dashboardQuarantineBlockRows_(priority) {
-  return [
-    [dashboardDisplayPriorityName_(priority.name), '', '', '', ''],
-    ['Причина', 'Статус', 'Товарів', 'Витрати', ''],
-    ['Усього в карантині', '', priority.quarantine.active, priority.quarantine.cost, ''],
-    ['Нові сьогодні', '', priority.quarantine.newToday, 0, ''],
-    ['Кліки без продажів', dashboardEnabledStatus_(priority.quarantine.noSalesEnabled), priority.quarantine.noSales.products, priority.quarantine.noSales.cost, ''],
-    ['Витрати > % ціни', dashboardEnabledStatus_(priority.quarantine.spendEnabled), priority.quarantine.spend.products, priority.quarantine.spend.cost, ''],
-    ['Дорогий клік', dashboardEnabledStatus_(priority.quarantine.expensiveClickEnabled), priority.quarantine.expensiveClick.products, priority.quarantine.expensiveClick.cost, '']
-  ];
 }
 
 
@@ -1601,9 +1583,11 @@ function quarantineReasonCostBreakdown_(id, registryRow, statsByPeriod, prices, 
 
 function formatDashboardDataSheet_(sheet, rowCount) {
   sheet.setFrozenRows(1);
-  sheet.setColumnWidths(1, 1, 180);
-  sheet.setColumnWidths(2, 9, 110);
-  sheet.setColumnWidth(11, 40);
+  sheet.setColumnWidth(1, 170);
+  sheet.setColumnWidths(2, 4, 92);
+  sheet.setColumnWidth(6, 28);
+  sheet.setColumnWidth(7, 170);
+  sheet.setColumnWidths(8, 4, 92);
   var area = sheet.getRange(2, 1, rowCount, 11);
   area
     .setWrap(false)
@@ -1617,76 +1601,98 @@ function formatDashboardDataSheet_(sheet, rowCount) {
   sheet.getRange(2, 1, rowCount, 1).setNumberFormat('@');
   sheet.getRange(2, 2, rowCount, 4).setNumberFormat('0.##');
   sheet.getRange(2, 6, rowCount, 2).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(2, 8, rowCount, 1).setNumberFormat('0.00');
-  sheet.getRange(2, 9, rowCount, 1).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(2, 10, rowCount, 1).setNumberFormat('0.0%');
-  var sections = {
-    'Зведення за групами': true,
-    'Карантин за групами': true
-  };
-  var values = sheet.getRange(2, 1, rowCount, 9).getValues();
-  var inQuarantine = false;
+  sheet.getRange(2, 8, rowCount, 2).setNumberFormat('0.##');
+  sheet.getRange(2, 10, rowCount, 2).setNumberFormat('0.##');
+  var values = sheet.getRange(2, 1, rowCount, 11).getValues();
+  var sectionColor = '#2f5597';
+  var headerColor = '#4a86e8';
+  var fillColor = '#eef4ff';
+  var borderColor = '#2f5597';
+  var inSummary = false;
   for (var i = 0; i < values.length; i++) {
-    var section = String(values[i][0] || '');
-    var label = String(values[i][1] || '');
-    var rightSection = String(values[i][5] || '');
-    var rightLabel = String(values[i][6] || '');
-    if (section === 'Карантин за групами') inQuarantine = true;
-    if (sections[section]) {
-      sheet.getRange(i + 2, 1, 1, section === 'Карантин за групами' ? 9 : 10)
-        .setBackground('#2f5597')
+    var row = i + 2;
+    var leftA = String(values[i][0] || '');
+    var leftB = String(values[i][1] || '');
+    var rightG = String(values[i][6] || '');
+    var rightH = String(values[i][7] || '');
+    if (leftA === 'Зведення benchmark-груп') {
+      sheet.getRange(row, 1, 1, 10)
+        .setBackground(sectionColor)
         .setFontColor('#ffffff')
         .setFontWeight('bold')
         .setHorizontalAlignment('left');
-    } else if (!inQuarantine && label === '' && section) {
-      sheet.getRange(i + 2, 1, 1, 10)
-        .setBackground('#2f5597')
+      inSummary = true;
+      continue;
+    }
+    if (leftA === 'Воронка та карантин за benchmark-групами') {
+      sheet.getRange(row, 1, 1, 11)
+        .setBackground(sectionColor)
         .setFontColor('#ffffff')
         .setFontWeight('bold')
-        .setHorizontalAlignment('left');
-    } else if (!inQuarantine && (section === 'Група' || section === 'Етап')) {
+        .setHorizontalAlignment('left')
+        .setBorder(true, null, null, null, null, null, borderColor, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+      inSummary = false;
+      continue;
+    }
+    if (leftA === 'Група') {
       sheet.getRange(i + 2, 1, 1, 10)
-        .setBackground('#4a86e8')
+        .setBackground(headerColor)
         .setFontColor('#ffffff')
         .setFontWeight('bold')
         .setHorizontalAlignment('center');
-    } else if (inQuarantine && (section === 'Причина' || section)) {
-      var row = i + 2;
-      sheet.getRange(row, 1, 1, 4).setNumberFormat('0.##');
-      sheet.getRange(row, 4, 1, 1).setNumberFormat('"UAH" #,##0.00');
-      if (rightSection || rightLabel) {
-        sheet.getRange(row, 6, 1, 4).setNumberFormat('0.##');
-        sheet.getRange(row, 9, 1, 1).setNumberFormat('"UAH" #,##0.00');
-      }
-      if (section && !label) {
-        sheet.getRange(row, 1, 1, 4)
-          .setBackground('#2f5597')
-          .setFontColor('#ffffff')
-          .setFontWeight('bold')
-          .setHorizontalAlignment('left');
-        if (rightSection || rightLabel) {
-          sheet.getRange(row, 6, 1, 4)
-            .setBackground('#2f5597')
-            .setFontColor('#ffffff')
-            .setFontWeight('bold')
-            .setHorizontalAlignment('left');
-        }
-      } else if (section === 'Причина') {
-        sheet.getRange(row, 1, 1, 4)
-          .setBackground('#4a86e8')
-          .setFontColor('#ffffff')
-          .setFontWeight('bold')
-          .setHorizontalAlignment('center');
-        if (rightSection || rightLabel) {
-          sheet.getRange(row, 6, 1, 4)
-            .setBackground('#4a86e8')
-            .setFontColor('#ffffff')
-            .setFontWeight('bold')
-            .setHorizontalAlignment('center');
-        }
-      }
+      continue;
+    }
+    if (inSummary && leftA && leftB) {
+      sheet.getRange(row, 6, 1, 2).setNumberFormat('"UAH" #,##0.00');
+      sheet.getRange(row, 8, 1, 1).setNumberFormat('0.00');
+      sheet.getRange(row, 9, 1, 1).setNumberFormat('"UAH" #,##0.00');
+      sheet.getRange(row, 10, 1, 1).setNumberFormat('0.0%');
+    }
+    if (leftB || leftA) {
+      sheet.getRange(row, 1, 1, 10).setBackground(fillColor);
+    }
+    if (leftA && !leftB && leftA !== 'Група') {
+      sheet.getRange(row, 1, 1, 5)
+        .setBackground(sectionColor)
+        .setFontColor('#ffffff')
+        .setFontWeight('bold')
+        .setHorizontalAlignment('left')
+        .setBorder(true, null, null, null, null, null, borderColor, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+    }
+    if (rightG && !rightH) {
+      sheet.getRange(row, 7, 1, 5)
+        .setBackground(sectionColor)
+        .setFontColor('#ffffff')
+        .setFontWeight('bold')
+        .setHorizontalAlignment('left')
+        .setBorder(true, null, null, null, null, null, borderColor, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+    }
+    if (leftA === 'Воронка' || leftA === 'Карантин') {
+      sheet.getRange(row, 1, 1, 5)
+        .setBackground(headerColor)
+        .setFontColor('#ffffff')
+        .setFontWeight('bold')
+        .setHorizontalAlignment('center');
+    }
+    if (rightG === 'Воронка' || rightG === 'Карантин') {
+      sheet.getRange(row, 7, 1, 5)
+        .setBackground(headerColor)
+        .setFontColor('#ffffff')
+        .setFontWeight('bold')
+        .setHorizontalAlignment('center');
+    }
+    if (leftA === 'Воронка') sheet.getRange(row + 1, 5, 6, 1).setNumberFormat('"UAH" #,##0.00');
+    if (rightG === 'Воронка') sheet.getRange(row + 1, 11, 6, 1).setNumberFormat('"UAH" #,##0.00');
+    if (leftA === 'Карантин') {
+      sheet.getRange(row + 1, 4, 5, 1).setNumberFormat('"UAH" #,##0.00');
+      sheet.getRange(row + 1, 5, 5, 1).setNumberFormat('0.0%');
+    }
+    if (rightG === 'Карантин') {
+      sheet.getRange(row + 1, 10, 5, 1).setNumberFormat('"UAH" #,##0.00');
+      sheet.getRange(row + 1, 11, 5, 1).setNumberFormat('0.0%');
     }
   }
+  sheet.getRange(4, 6, Math.max(1, rowCount - 2), 1).setBackground('#ffffff');
 }
 
 
