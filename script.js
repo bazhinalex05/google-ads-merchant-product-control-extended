@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-10';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-3';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-11';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-4';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1265,25 +1265,20 @@ function dashboardDataRows_(model) {
 
 
 function dashboardRows_(model) {
-  var rows = [
-    dashboardWideRow_('Unified Merchant Funnel Product Control Extended V2'),
-    dashboardWideRow_(''),
-    ['Показник', 'Значення', '', '', '', '', '', '', '', '', '', ''],
-    ['Товарів', model.total.products, '', '', '', '', '', '', '', '', '', ''],
-    ['ROAS', model.total.roas, '', '', '', '', '', '', '', '', '', ''],
-    ['CPA', model.total.cpa, '', '', '', '', '', '', '', '', '', ''],
-    ['Цінність конв.', model.total.value, '', '', '', '', '', '', '', '', '', ''],
-    ['Витрати', model.total.cost, '', '', '', '', '', '', '', '', '', ''],
-    ['Виключено з реклами', model.excludedCount, '', '', '', '', '', '', '', '', '', ''],
-    ['У карантині у вибірці', model.quarantineCount, '', '', '', '', '', '', '', '', '', ''],
-    dashboardWideRow_('')
-  ];
+  var rows = [dashboardWideRow_('Unified Merchant Funnel Product Control Extended V2'), dashboardWideRow_('')];
   dashboardAppendAggSection_(rows, 'Товари з конверсіями', model.salesSplit, model.total.products);
   dashboardAppendAggSection_(rows, 'Клікабельні товари', model.clickSplit, model.total.products);
   dashboardAppendAggSection_(rows, 'Популярні в пошуку', model.impressionSplit, model.total.products);
+  rows.push(['Загалом', '', '', '', '', '', '', 'Карантин', 'Статус', 'Товарів', '', '']);
+  rows.push(['за останні 14 днів', '', '', '', '', '', '', 'Усього в карантині', 'реєстр', model.quarantine.active, '', '']);
+  rows.push(['Товарів', 'ROAS', '', '', '', '', '', 'Кліки без продажів', 'увімкнено', model.quarantine.noSales, '', '']);
+  rows.push([model.total.products, model.total.roas, '', '', '', '', '', 'Витрати > % ціни', 'увімкнено', model.quarantine.spend, '', '']);
+  rows.push(['CPA', 'Конверсії', '', '', '', '', '', 'Дорогий клік', 'увімкнено', model.quarantine.expensiveClick, '', '']);
+  rows.push([model.total.cpa, model.total.conversions, '', '', '', '', '', '', '', '', '', '']);
+  rows.push(['Цінність конв.', 'Витрати', '', '', '', '', '', 'У карантині у вибірці', '', model.quarantineCount, '', '']);
+  rows.push([model.total.value, model.total.cost, '', '', '', '', '', 'Виключено з реклами', '', model.excludedCount, '', '']);
+  rows.push(dashboardWideRow_(''));
   dashboardAppendAggSection_(rows, 'Етапи воронки', model.stages, model.total.products);
-  dashboardAppendQuarantineSection_(rows, model);
-  dashboardAppendAggSection_(rows, 'Product type за витратами', model.topProductTypes, model.total.products);
   return rows;
 }
 
@@ -1433,7 +1428,7 @@ function formatDashboardSheet_(sheet, rowCount) {
     'Популярні в пошуку': true,
     'Етапи воронки': true,
     'Карантин': true,
-    'Product type за витратами': true
+    'Загалом': true
   };
   var firstCol = sheet.getRange(2, 1, rowCount, 1).getValues();
   for (var i = 0; i < firstCol.length; i++) {
@@ -1451,6 +1446,7 @@ function formatDashboardSheet_(sheet, rowCount) {
   }
   sheet.getRange(2, 2, rowCount, 6).setNumberFormat('0.##');
   sheet.getRange(2, 6, rowCount, 2).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(2, 8, rowCount, 3).setWrap(false);
 }
 
 
@@ -1461,22 +1457,20 @@ function clearSheetCharts_(sheet) {
 
 
 function buildDashboardCharts_(sheet, rows) {
-  addDashboardCostPieChart_(sheet, rows, 'Етапи воронки', 'Витрати на етапи воронки', 4, 9, 0);
-  addDashboardCostPieChart_(sheet, rows, 'Товари з конверсіями', '% Витрат на конверсійні', 4, 12, 0);
-  addDashboardCostPieChart_(sheet, rows, 'Клікабельні товари', '% Витрат на клікабельні', 16, 9, 0);
-  addDashboardCostPieChart_(sheet, rows, 'Популярні в пошуку', '% Витрат на популярні', 16, 12, 0);
+  addDashboardCostPieChart_(sheet, rows, 'Етапи воронки', 'Витрати на етапи воронки', 3, 8, 3, 9, 0);
+  addDashboardCostPieChart_(sheet, rows, 'Товари з конверсіями', '% Витрат на конверсійні', 12, 8, 12, 9, 0);
+  addDashboardCostPieChart_(sheet, rows, 'Клікабельні товари', '% Витрат на клікабельні', 21, 8, 21, 9, 0);
+  addDashboardCostPieChart_(sheet, rows, 'Популярні в пошуку', '% Витрат на популярні', 30, 8, 30, 9, 0);
 }
 
 
-function addDashboardCostPieChart_(sheet, rows, sectionTitle, chartTitle, anchorRow, anchorColumn, maxRows) {
+function addDashboardCostPieChart_(sheet, rows, sectionTitle, chartTitle, anchorRow, anchorColumn, sourceRow, sourceColumn, maxRows) {
   var range = dashboardSectionDataRange_(rows, sectionTitle, maxRows);
   if (!range) return;
-  var labelRange = sheet.getRange(range.startRow, 1, range.rowCount, 1);
-  var costRange = sheet.getRange(range.startRow, 7, range.rowCount, 1);
+  var sourceRange = writeDashboardChartSource_(sheet, range, sourceRow, sourceColumn);
   var chart = sheet.newChart()
     .setChartType(Charts.ChartType.PIE)
-    .addRange(labelRange)
-    .addRange(costRange)
+    .addRange(sourceRange)
     .setOption('title', chartTitle)
     .setOption('width', 270)
     .setOption('height', 170)
@@ -1488,6 +1482,22 @@ function addDashboardCostPieChart_(sheet, rows, sectionTitle, chartTitle, anchor
     .setPosition(anchorRow, anchorColumn, 0, 0)
     .build();
   sheet.insertChart(chart);
+}
+
+
+function writeDashboardChartSource_(sheet, range, sourceRow, sourceColumn) {
+  var labels = sheet.getRange(range.startRow, 1, range.rowCount, 1).getValues();
+  var costs = sheet.getRange(range.startRow, 7, range.rowCount, 1).getValues();
+  var values = [['Сегмент', 'Витрати']];
+  for (var i = 0; i < labels.length; i++) {
+    values.push([labels[i][0], num_(costs[i][0], 0)]);
+  }
+  var sourceRange = sheet.getRange(sourceRow, sourceColumn, values.length, 2);
+  sourceRange.clearContent();
+  sourceRange.setValues(values);
+  sheet.getRange(sourceRow, sourceColumn + 1, values.length, 1).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(sourceRow, sourceColumn, 1, 2).setFontWeight('bold');
+  return sourceRange;
 }
 
 
