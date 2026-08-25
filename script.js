@@ -17,7 +17,7 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-26-waterfall-recovery-1';
+var SCRIPT_BUILD = '2026-08-26-waterfall-recovery-2';
 var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-26';
 
 
@@ -140,15 +140,16 @@ function ensureSheets_(ss) {
     out[key] = ss.getSheetByName(names[key]) || ss.insertSheet(names[key]);
   }
   ensureSettingsTemplate_(out.settings);
+  var settings = readSettings_(out.settings);
   ensureRunStateHeader_(out.runState);
   ensureRunLogHeader_(out.runLog);
   ensureMerchantSnapshotHeader_(out.merchantSnapshot);
   ensureAdsStatsHeader_(out.adsStatsSnapshot);
-  ensureProductsDraftHeader_(out.products, readSettings_(out.settings));
-  ensureProductsDraftHeader_(out.productsDraft, readSettings_(out.settings));
-  ensureProductsDraftHeader_(out.productsPublish, readSettings_(out.settings));
+  ensureProductsDraftHeader_(out.products, settings);
+  ensureProductsDraftHeader_(out.productsDraft, settings);
+  ensureProductsDraftHeader_(out.productsPublish, settings);
   ensureQuarantineHeaders_(out.quarantineRegistry, out.quarantineLog);
-  compactManagedSheetGrids_(out, readSettings_(out.settings));
+  if (settings.enableManagedSheetFormatting) compactManagedSheetGrids_(out, settings);
   applyManagedSheetVisibility_(ss);
   return out;
 }
@@ -303,11 +304,24 @@ function ensureSettingsTemplate_(sheet) {
     }
     values.push(rows[i]);
   }
+  if (settingsTemplateKeysMatch_(sheet, values)) {
+    return;
+  }
   sheet.clear();
   sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).clearDataValidations();
   sheet.getRange(1, 1, values.length, 3).setValues(values);
   formatSettingsSheet_(sheet, values);
   fillBlankSettingValue_(sheet, 'developer_email', 'bazhinalex05@gmail.com');
+}
+
+
+function settingsTemplateKeysMatch_(sheet, values) {
+  if (!sheet || sheet.getLastRow() < values.length) return false;
+  var current = sheet.getRange(1, 1, values.length, 1).getValues();
+  for (var i = 0; i < values.length; i++) {
+    if (String(current[i][0] || '').trim() !== String(values[i][0] || '').trim()) return false;
+  }
+  return true;
 }
 
 
