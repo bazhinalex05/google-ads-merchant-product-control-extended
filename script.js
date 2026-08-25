@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-31';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-21';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-32';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-22';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -744,7 +744,7 @@ function stageProductTypesBuild_(ctx) {
   var statsByPath = buildProductTypeStats_(ctx.sheets.merchantSnapshot, ctx.sheets.adsStatsSnapshot);
   var rows = [[
     'enabled', 'product_type_l1', 'product_type_l2', 'product_type_l3', 'product_type_l4', 'product_type_l5',
-    'full_path', 'dashboard_group', 'target_cpa', 'comment', 'products', 'impressions', 'clicks', 'cost',
+    'full_path', 'benchmark_label', 'target_cpa', 'comment', 'products', 'impressions', 'clicks', 'cost',
     'conversions', 'conversion_value', 'avg_order_value', 'cpa', 'roas'
   ]];
   for (var i = 0; i < paths.length; i++) {
@@ -761,7 +761,7 @@ function stageProductTypesBuild_(ctx) {
       displayParts[3] || '',
       displayParts[4] || '',
       path,
-      saved.dashboard_group || '',
+      saved.benchmark_label || '',
       saved.target_cpa || '',
       saved.comment || '',
       stats.products,
@@ -865,13 +865,14 @@ function stageProductsDraftBuild_(ctx) {
 
   var rules = buildProductTypeRules_(ctx.sheets.productTypes);
   var quarantine = readActiveQuarantineMap_(ctx.sheets.quarantineRegistry);
-  var funnel = buildFunnelStageMap_(ctx.sheets.merchantSnapshot, ctx.sheets.adsStatsSnapshot, ctx.settings);
+  var benchmarkRules = buildProductTypeBenchmarkRules_(ctx.sheets.productTypes);
+  var funnel = buildFunnelStageMap_(ctx.sheets.merchantSnapshot, ctx.sheets.adsStatsSnapshot, ctx.settings, benchmarkRules);
   var count = Math.min(ctx.settings.productsChunkSize, total - offset);
   if (count > 0) {
     var data = ctx.sheets.merchantSnapshot.getRange(offset + 2, 1, count, 10).getValues();
     var rows = [];
     for (var i = 0; i < data.length; i++) {
-      rows.push(productDraftRow_(data[i], rules, quarantine, funnel, ctx.settings));
+      rows.push(productDraftRow_(data[i], rules, quarantine, funnel, ctx.settings, benchmarkRules));
     }
     appendRows_(ctx.sheets.productsDraft, rows);
     offset += rows.length;
@@ -1104,8 +1105,8 @@ function buildProductDiagnostics_(ctx) {
   var stats = readStatsByPeriod_(ctx.sheets.adsStatsSnapshot).funnel || {};
   var quarantine = readQuarantineRegistry_(ctx.sheets.quarantineRegistry);
   var rules = buildProductTypeRules_(ctx.sheets.productTypes);
-  var dashboardGroupRules = buildProductTypeDashboardGroupRules_(ctx.sheets.productTypes);
-  var funnel = buildFunnelStageMap_(ctx.sheets.merchantSnapshot, ctx.sheets.adsStatsSnapshot, ctx.settings);
+  var benchmarkRules = buildProductTypeBenchmarkRules_(ctx.sheets.productTypes);
+  var funnel = buildFunnelStageMap_(ctx.sheets.merchantSnapshot, ctx.sheets.adsStatsSnapshot, ctx.settings, benchmarkRules);
   var today = dateOnly_(new Date());
   var merchantRows = ctx.sheets.merchantSnapshot.getLastRow() > 1
     ? ctx.sheets.merchantSnapshot.getRange(2, 1, ctx.sheets.merchantSnapshot.getLastRow() - 1, 10).getValues()
@@ -1118,13 +1119,13 @@ function buildProductDiagnostics_(ctx) {
     var q = quarantine[id] || {};
     var qActive = isActiveDate_(q.active_until, today);
     var path = String(m[5] || '');
-    var dashboardGroup = resolveDashboardGroup_(path, m[4], dashboardGroupRules);
+    var benchmarkGroup = resolveBenchmarkGroup_(path, m[4], benchmarkRules);
     var excluded = (!isAllowedProductType_(path, rules) || qActive) ? ['Shopping_Ads', 'Display_Ads'] : ['', ''];
     rows.push([
       m[0] || id,
       m[2] || '',
       m[3] || 0,
-      dashboardGroup,
+      benchmarkGroup,
       path,
       funnel[id] || '6 без стат',
       s.impressions || 0,
@@ -1269,7 +1270,7 @@ function dashboardDataRows_(model) {
   var rows = [];
   rows.push(['Зведення за групами', '', '', '', '', '', '', '', '', '', '']);
   rows.push(['Група', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка', '']);
-  for (var i = 0; i < model.priorities.length; i++) rows.push(dashboardGroupSummaryRow_(model.priorities[i], model.total.products));
+  for (var i = 0; i < model.priorities.length; i++) rows.push(dashboardBenchmarkSummaryRow_(model.priorities[i], model.total.products));
   rows.push(blank);
   for (var p = 0; p < model.priorities.length; p++) {
     var priority = model.priorities[p];
@@ -1381,7 +1382,7 @@ function finalizeDashboardAgg_(agg) {
 }
 
 
-function dashboardGroupSummaryRow_(priority, totalProducts) {
+function dashboardBenchmarkSummaryRow_(priority, totalProducts) {
   var agg = priority.total;
   return [dashboardDisplayPriorityName_(priority.name), agg.products, agg.impressions, agg.clicks, agg.conversions, agg.value, agg.cost, agg.roas, agg.cpa, totalProducts ? agg.products / totalProducts : 0, ''];
 }
@@ -2218,14 +2219,14 @@ function readStatsByPeriod_(sheet) {
 }
 
 
-function buildFunnelStageMap_(merchantSheet, statsSheet, settings) {
+function buildFunnelStageMap_(merchantSheet, statsSheet, settings, benchmarkRules) {
   if (!settings.enableFunnelBuilder) return {};
   var stats = readStatsByPeriod_(statsSheet).funnel || {};
   var groups = {};
   var rows = merchantSheet.getLastRow() > 1 ? merchantSheet.getRange(2, 1, merchantSheet.getLastRow() - 1, 10).getValues() : [];
   for (var i = 0; i < rows.length; i++) {
     var id = String(rows[i][1] || '');
-    var group = String(rows[i][4] || 'other');
+    var group = resolveBenchmarkGroup_(rows[i][5], rows[i][4], benchmarkRules);
     var s = stats[id] || { impressions: 0, clicks: 0, conversions: 0 };
     if (!groups[group]) groups[group] = { clicks: [], impressions: [] };
     groups[group].clicks.push(s.clicks);
@@ -2241,7 +2242,7 @@ function buildFunnelStageMap_(merchantSheet, statsSheet, settings) {
   var out = {};
   for (var j = 0; j < rows.length; j++) {
     var offer = String(rows[j][1] || '');
-    var bg = String(rows[j][4] || 'other');
+    var bg = resolveBenchmarkGroup_(rows[j][5], rows[j][4], benchmarkRules);
     out[offer] = funnelStage_(stats[offer], thresholds[bg] || thresholds.other || { clicks: 1, impressions: 1 });
   }
   return out;
@@ -2259,7 +2260,7 @@ function funnelStage_(s, t) {
 }
 
 
-function productDraftRow_(m, rules, quarantine, funnel, settings) {
+function productDraftRow_(m, rules, quarantine, funnel, settings, benchmarkRules) {
   var rawId = String(m[0] || '');
   var id = String(m[1] || rawId);
   var path = String(m[5] || '');
@@ -2267,7 +2268,7 @@ function productDraftRow_(m, rules, quarantine, funnel, settings) {
   var blockedByQuarantine = settings.enableQuarantine && quarantine[id];
   var excluded = (blockedByProductType || blockedByQuarantine) ? ['Shopping_Ads', 'Display_Ads'] : ['', ''];
   var row = [rawId || id, excluded[0], excluded[1], settings.enableFunnelBuilder ? (funnel[id] || '6 без стат') : ''];
-  if (settings.benchmarkOutputAttribute) row.push(String(m[4] || 'other'));
+  if (settings.benchmarkOutputAttribute) row.push(resolveBenchmarkGroup_(path, m[4], benchmarkRules));
   return row;
 }
 
@@ -2311,16 +2312,18 @@ function readProductTypeState_(sheet) {
   var lastCol = Math.max(10, sheet.getLastColumn());
   var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   var fullPathCol = headerIndex_(header, 'full_path', 6);
-  var dashboardGroupCol = headerIndex_(header, 'dashboard_group', -1);
-  var targetCpaCol = headerIndex_(header, 'target_cpa', dashboardGroupCol >= 0 ? 8 : 7);
-  var commentCol = headerIndex_(header, 'comment', dashboardGroupCol >= 0 ? 9 : 8);
+  var benchmarkLabelCol = headerIndex_(header, 'benchmark_label', -1);
+  var legacyDashboardGroupCol = headerIndex_(header, 'dashboard_group', -1);
+  var hasManualGroupCol = benchmarkLabelCol >= 0 || legacyDashboardGroupCol >= 0;
+  var targetCpaCol = headerIndex_(header, 'target_cpa', hasManualGroupCol ? 8 : 7);
+  var commentCol = headerIndex_(header, 'comment', hasManualGroupCol ? 9 : 8);
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
   for (var i = 0; i < data.length; i++) {
     var path = String(data[i][fullPathCol] || '').trim();
     if (!path) continue;
     out[path] = {
       enabled: data[i][0] === true || String(data[i][0]).toUpperCase() === 'TRUE',
-      dashboard_group: dashboardGroupCol >= 0 ? data[i][dashboardGroupCol] || '' : '',
+      benchmark_label: benchmarkLabelCol >= 0 ? data[i][benchmarkLabelCol] || '' : (legacyDashboardGroupCol >= 0 ? data[i][legacyDashboardGroupCol] || '' : ''),
       target_cpa: data[i][targetCpaCol] || '',
       comment: data[i][commentCol] || ''
     };
@@ -2329,18 +2332,20 @@ function readProductTypeState_(sheet) {
 }
 
 
-function buildProductTypeDashboardGroupRules_(sheet) {
+function buildProductTypeBenchmarkRules_(sheet) {
   var rules = [];
   if (sheet.getLastRow() < 2) return rules;
   var lastCol = Math.max(8, sheet.getLastColumn());
   var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   var fullPathCol = headerIndex_(header, 'full_path', 6);
-  var dashboardGroupCol = headerIndex_(header, 'dashboard_group', -1);
-  if (dashboardGroupCol < 0) return rules;
+  var benchmarkLabelCol = headerIndex_(header, 'benchmark_label', -1);
+  var legacyDashboardGroupCol = headerIndex_(header, 'dashboard_group', -1);
+  var groupCol = benchmarkLabelCol >= 0 ? benchmarkLabelCol : legacyDashboardGroupCol;
+  if (groupCol < 0) return rules;
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
   for (var i = 0; i < data.length; i++) {
     var path = String(data[i][fullPathCol] || '').trim();
-    var group = String(data[i][dashboardGroupCol] || '').trim();
+    var group = String(data[i][groupCol] || '').trim();
     if (!path || !group) continue;
     rules.push({ path: path, group: group, depth: productTypePathDepth_(path) });
   }
@@ -2349,7 +2354,7 @@ function buildProductTypeDashboardGroupRules_(sheet) {
 }
 
 
-function resolveDashboardGroup_(path, fallback, rules) {
+function resolveBenchmarkGroup_(path, fallback, rules) {
   path = String(path || '').trim() || '(empty)';
   for (var i = 0; i < rules.length; i++) {
     if (path === rules[i].path || path.indexOf(rules[i].path + ' > ') === 0) return rules[i].group;
