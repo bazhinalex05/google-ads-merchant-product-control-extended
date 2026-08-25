@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-27';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-18';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-28';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-19';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1136,7 +1136,10 @@ function buildDashboardData_(ctx) {
     ? ctx.sheets.productDiagnostics.getRange(2, 1, ctx.sheets.productDiagnostics.getLastRow() - 1, 15).getValues()
     : [];
   var rebuild = dashboardRefreshRequested_(sheet, 'Перебудувати DashboardData при наступному запуску');
-  if (rebuild) sheet.clear();
+  if (rebuild) {
+    sheet.clear();
+    sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).breakApart();
+  }
   else sheet.getRange(2, 1, Math.max(1, sheet.getMaxRows() - 1), Math.min(11, sheet.getMaxColumns())).clearContent();
 
   var model = dashboardModel_(ctx, diagRows, state);
@@ -1250,54 +1253,20 @@ function dashboardModel_(ctx, diagRows, state) {
 function dashboardDataRows_(model) {
   var blank = ['', '', '', '', '', '', '', '', '', '', ''];
   var rows = [
-    ['Розділ', 'Показник', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка'],
-    ['Запуск', 'Статус процесу', dashboardDisplayStateValue_(model.state.pipeline_status), '', '', '', '', '', '', '', ''],
-    ['Запуск', 'Етап', dashboardDisplayStateValue_(model.state.stage), '', '', '', '', '', '', '', ''],
-    ['Запуск', 'Остання публікація', model.state.last_successful_publish_at || '', '', '', '', '', '', '', '', ''],
-    ['Запуск', 'Рядків з Merchant Center', num_(model.state.merchant_rows_written, 0), '', '', '', '', '', '', '', ''],
-    ['Запуск', 'Рядків чернетки товарів', num_(model.state.products_draft_rows, 0), '', '', '', '', '', '', '', ''],
-    ['Запуск', 'Усього товарів', num_(model.state.products_total, 0), '', '', '', '', '', '', '', ''],
-    ['Запуск', 'Шляхів типу товару', model.productTypePathCount, '', '', '', '', '', '', '', ''],
-    ['Запуск', 'Рядків рекламної статистики', model.adsStatsRows, '', '', '', '', '', '', '', ''],
-    blank,
-    ['Зведення', 'Загалом', model.total.products, model.total.impressions, model.total.clicks, model.total.conversions, model.total.value, model.total.cost, model.total.roas, model.total.cpa, 1],
-    ['Зведення', 'Виключено з реклами', model.excludedCount, '', '', '', '', '', '', '', model.total.products ? model.excludedCount / model.total.products : 0],
-    ['Зведення', 'У карантині у вибірці', model.quarantineCount, '', '', '', '', '', '', '', model.total.products ? model.quarantineCount / model.total.products : 0],
-    blank,
-    ['Товари з конверсіями', 'Показник', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка'],
-    dashboardDataAggRow_('Товари з конверсіями', model.salesSplit[0], model.total.products),
-    dashboardDataAggRow_('Товари з конверсіями', model.salesSplit[1], model.total.products),
-    blank,
-    ['Клікабельні товари', 'Показник', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка'],
-    dashboardDataAggRow_('Клікабельні товари', model.clickSplit[0], model.total.products),
-    dashboardDataAggRow_('Клікабельні товари', model.clickSplit[1], model.total.products),
-    blank,
-    ['Популярні в пошуку', 'Показник', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка'],
-    dashboardDataAggRow_('Популярні в пошуку', model.impressionSplit[0], model.total.products),
-    dashboardDataAggRow_('Популярні в пошуку', model.impressionSplit[1], model.total.products),
-    blank,
-    ['Етапи воронки', 'Етап', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка']
+    ['Пріоритети - зведення', '', '', '', '', '', '', '', '', '', ''],
+    ['Пріоритет', '', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка']
   ];
-  for (var i = 0; i < model.stages.length; i++) rows.push(dashboardDataAggRow_('Етапи воронки', model.stages[i], model.total.products));
+  for (var j = 0; j < model.priorities.length; j++) rows.push(dashboardPrioritySummaryRow_(model.priorities[j], model.total.products));
   rows.push(blank);
-  rows.push(['Карантин', 'Показник', 'Товарів', 'Статус', '', '', '', '', '', '', '']);
-  rows.push(['Карантин', 'Усього в карантині', model.quarantine.active, '', '', '', '', '', '', '', '']);
-  rows.push(['Карантин', 'Кліки без продажів', model.quarantine.noSales, dashboardEnabledStatus_(model.quarantine.noSalesEnabled), '', '', '', '', '', '', '']);
-  rows.push(['Карантин', 'Витрати > % ціни', model.quarantine.spend, dashboardEnabledStatus_(model.quarantine.spendEnabled), '', '', '', '', '', '', '']);
-  rows.push(['Карантин', 'Дорогий клік', model.quarantine.expensiveClick, dashboardEnabledStatus_(model.quarantine.expensiveClickEnabled), '', '', '', '', '', '', '']);
-  rows.push(['Карантин', 'Нові сьогодні', model.quarantine.newToday, '', '', '', '', '', '', '', '']);
-  rows.push(['Карантин', 'Витрати карантину', '', '', '', '', '', model.quarantine.activeCost, '', '', '']);
-  rows.push(blank);
-  rows.push(['Пріоритети', 'Пріоритет', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка']);
-  for (var j = 0; j < model.priorities.length; j++) rows.push(dashboardDataAggRow_('Пріоритети', model.priorities[j].total, model.total.products));
-  rows.push(blank);
-  rows.push(['Пріоритети / воронка', 'Пріоритет / етап', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка в пріоритеті']);
+  rows.push(['Воронка за пріоритетами', '', '', '', '', '', '', '', '', '', '']);
+  rows.push(['Пріоритет', 'Етап', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка в пріоритеті']);
   for (var p = 0; p < model.priorities.length; p++) {
     var priority = model.priorities[p];
     for (var s = 0; s < priority.stages.length; s++) rows.push(dashboardPriorityFunnelRow_(priority, priority.stages[s]));
   }
   rows.push(blank);
-  rows.push(['Пріоритети / карантин', 'Пріоритет / причина', 'Товарів', 'Статус', '', '', '', 'Витрати карантину', '', '', '']);
+  rows.push(['Карантин за пріоритетами', '', '', '', '', '', '', '', '', '', '']);
+  rows.push(['Пріоритет', 'Причина', 'Товарів', 'Статус', '', '', '', 'Витрати карантину', '', '', '']);
   for (var q = 0; q < model.priorities.length; q++) {
     var pr = model.priorities[q];
     rows.push(dashboardPriorityQuarantineTotalRow_(pr, 'Усього в карантині', pr.quarantine.active, '', pr.quarantine.cost));
@@ -1393,10 +1362,16 @@ function dashboardDataAggRow_(section, agg, totalProducts) {
 }
 
 
+function dashboardPrioritySummaryRow_(priority, totalProducts) {
+  var agg = priority.total;
+  return [dashboardDisplayPriorityName_(priority.name), '', agg.products, agg.impressions, agg.clicks, agg.conversions, agg.value, agg.cost, agg.roas, agg.cpa, totalProducts ? agg.products / totalProducts : 0];
+}
+
+
 function dashboardPriorityFunnelRow_(priority, stage) {
   return [
-    'Пріоритети / воронка',
-    dashboardDisplayPriorityName_(priority.name) + ' | ' + stage.name,
+    dashboardDisplayPriorityName_(priority.name),
+    stage.name,
     stage.products,
     stage.impressions,
     stage.clicks,
@@ -1412,8 +1387,8 @@ function dashboardPriorityFunnelRow_(priority, stage) {
 
 function dashboardPriorityQuarantineTotalRow_(priority, label, products, status, cost) {
   return [
-    'Пріоритети / карантин',
-    dashboardDisplayPriorityName_(priority.name) + ' | ' + label,
+    dashboardDisplayPriorityName_(priority.name),
+    label,
     products,
     status,
     '',
@@ -1610,27 +1585,29 @@ function formatDashboardDataSheet_(sheet, rowCount) {
   sheet.setColumnWidths(1, 2, 180);
   sheet.setColumnWidths(3, 9, 110);
   sheet.getRange(2, 1, rowCount, 11).setWrap(false).setVerticalAlignment('middle');
+  sheet.getRange(2, 1, rowCount, 11).setHorizontalAlignment('center');
   sheet.getRange(2, 1, rowCount, 11).setNumberFormat('0.##');
   sheet.getRange(2, 7, rowCount, 2).setNumberFormat('"UAH" #,##0.00');
   sheet.getRange(2, 9, rowCount, 1).setNumberFormat('0.00');
   sheet.getRange(2, 10, rowCount, 1).setNumberFormat('"UAH" #,##0.00');
   sheet.getRange(2, 11, rowCount, 1).setNumberFormat('0.0%');
   var sections = {
-    'Розділ': true,
-    'Товари з конверсіями': true,
-    'Клікабельні товари': true,
-    'Популярні в пошуку': true,
-    'Етапи воронки': true,
-    'Карантин': true,
-    'Пріоритети': true,
-    'Пріоритети / воронка': true,
-    'Пріоритети / карантин': true
+    'Пріоритети - зведення': true,
+    'Воронка за пріоритетами': true,
+    'Карантин за пріоритетами': true
   };
   var values = sheet.getRange(2, 1, rowCount, 2).getValues();
   for (var i = 0; i < values.length; i++) {
     var section = String(values[i][0] || '');
     var label = String(values[i][1] || '');
-    if (sections[section] && (label === 'Показник' || label === 'Пріоритет' || label === 'Етап' || label === 'Пріоритет / етап' || label === 'Пріоритет / причина')) {
+    if (sections[section]) {
+      sheet.getRange(i + 2, 1, 1, 11)
+        .mergeAcross()
+        .setBackground('#2f5597')
+        .setFontColor('#ffffff')
+        .setFontWeight('bold')
+        .setHorizontalAlignment('left');
+    } else if (section === 'Пріоритет' && (label === '' || label === 'Етап' || label === 'Причина')) {
       sheet.getRange(i + 2, 1, 1, 11)
         .setBackground('#4a86e8')
         .setFontColor('#ffffff')
