@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-17';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-10';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-18';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-11';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1269,7 +1269,7 @@ function dashboardRows_(model) {
   dashboardAppendAggSection_(rows, 'Конверсійні', model.salesSplit);
   dashboardAppendAggSection_(rows, 'Клікабельні', model.clickSplit);
   dashboardAppendAggSection_(rows, 'Популярні', model.impressionSplit);
-  while (rows.length < 20) rows.push(dashboardWideRow_(''));
+  while (rows.length < 22) rows.push(dashboardWideRow_(''));
   rows.push(['Загалом', 'за останні 14 днів', 'Карантин', 'Статус', 'Товарів', 'Етап', 'Витрати']);
   rows.push(['Товарів', model.total.products, 'Усього в карантині', 'реєстр', model.quarantine.active, model.stages[0].name, model.stages[0].cost]);
   rows.push(['Витрати', model.total.cost, 'Кліки без продажів', 'увімкнено', model.quarantine.noSales, model.stages[1].name, model.stages[1].cost]);
@@ -1404,7 +1404,7 @@ function formatDashboardDataSheet_(sheet, rowCount) {
 function formatDashboardSheet_(sheet, rowCount) {
   sheet.setFrozenRows(1);
   sheet.setColumnWidths(1, 7, 164);
-  sheet.setRowHeights(13, 9, 21);
+  sheet.setRowHeights(14, 9, 21);
   ensureSheetRows_(sheet, 35);
   ensureSheetColumns_(sheet, 7);
   sheet.getRange(2, 1, rowCount, 7)
@@ -1433,18 +1433,18 @@ function formatDashboardSheet_(sheet, rowCount) {
       sheet.getRange(row, 1, 1, 7).setBackground('#eef4ff');
     }
   }
-  formatDashboardSummaryBlock_(sheet, 22, 1, 7, 2);
-  formatDashboardSummaryBlock_(sheet, 22, 3, 7, 3);
-  formatDashboardSummaryBlock_(sheet, 22, 6, 7, 2);
-  sheet.getRange(23, 5, 6, 1).setNumberFormat('0');
-  sheet.getRange(23, 7, 6, 1).setNumberFormat('"UAH" #,##0.00');
+  formatDashboardSummaryBlock_(sheet, 24, 1, 7, 2);
+  formatDashboardSummaryBlock_(sheet, 24, 3, 7, 3);
+  formatDashboardSummaryBlock_(sheet, 24, 6, 7, 2);
+  sheet.getRange(25, 5, 6, 1).setNumberFormat('0');
+  sheet.getRange(25, 7, 6, 1).setNumberFormat('"UAH" #,##0.00');
   sheet.getRange(2, 2, 11, 4).setNumberFormat('0.##');
   sheet.getRange(2, 6, 11, 2).setNumberFormat('"UAH" #,##0.00');
-  sheet.getRange(23, 1, 6, 1).setNumberFormat('@');
-  sheet.getRange(23, 2, 6, 1).setNumberFormat('0.##');
-  sheet.getRange(24, 2, 1, 1).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(25, 1, 6, 1).setNumberFormat('@');
+  sheet.getRange(25, 2, 6, 1).setNumberFormat('0.##');
   sheet.getRange(26, 2, 1, 1).setNumberFormat('"UAH" #,##0.00');
   sheet.getRange(28, 2, 1, 1).setNumberFormat('"UAH" #,##0.00');
+  sheet.getRange(30, 2, 1, 1).setNumberFormat('"UAH" #,##0.00');
 }
 
 
@@ -1471,7 +1471,7 @@ function clearSheetCharts_(sheet) {
 
 
 function buildDashboardCharts_(sheet) {
-  var chartRow = 13;
+  var chartRow = 14;
   var chartCol = 1;
   var chartWidth = 287;
   var chartHeight = 188;
@@ -1482,7 +1482,7 @@ function buildDashboardCharts_(sheet) {
 
   var stageChart = sheet.newChart()
     .asBarChart()
-    .addRange(sheet.getRange(22, 6, 7, 2))
+    .addRange(sheet.getRange(24, 6, 7, 2))
     .setOption('title', 'Витрати на етапи воронки')
     .setOption('legend', { position: 'none' })
     .setOption('useFirstColumnAsDomain', true)
