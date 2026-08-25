@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-34';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-24';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-35';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-25';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1145,7 +1145,7 @@ function buildProductDiagnostics_(ctx) {
 
 function buildDashboardData_(ctx) {
   var sheet = ctx.sheets.dashboardData;
-  ensureSheetColumns_(sheet, 11);
+  ensureSheetColumns_(sheet, 10);
   var state = readState_(ctx.sheets.runState);
   var diagRows = ctx.sheets.productDiagnostics.getLastRow() > 1
     ? ctx.sheets.productDiagnostics.getRange(2, 1, ctx.sheets.productDiagnostics.getLastRow() - 1, 15).getValues()
@@ -1155,7 +1155,7 @@ function buildDashboardData_(ctx) {
     sheet.clear();
     sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).breakApart();
   }
-  else sheet.getRange(2, 1, Math.max(1, sheet.getMaxRows() - 1), Math.min(11, sheet.getMaxColumns())).clearContent();
+  else sheet.getRange(2, 1, Math.max(1, sheet.getMaxRows() - 1), Math.min(10, sheet.getMaxColumns())).clearContent();
 
   var model = dashboardModel_(ctx, diagRows, state);
   var rows = dashboardDataRows_(model);
@@ -1266,14 +1266,14 @@ function dashboardModel_(ctx, diagRows, state) {
 
 
 function dashboardDataRows_(model) {
-  var blank = ['', '', '', '', '', '', '', '', '', '', ''];
+  var blank = ['', '', '', '', '', '', '', '', '', ''];
   var rows = [];
-  rows.push(['Зведення benchmark-груп', '', '', '', '', '', '', '', '', '', '']);
-  rows.push(['Група', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка', '']);
+  rows.push(['Зведення benchmark-груп', '', '', '', '', '', '', '', '', '']);
+  rows.push(['Група', 'Товарів', 'Покази', 'Кліки', 'Конверсії', 'Цінність конв.', 'Витрати', 'ROAS', 'CPA', 'Частка']);
   for (var i = 0; i < model.priorities.length; i++) rows.push(dashboardBenchmarkSummaryRow_(model.priorities[i], model.total.products));
   rows.push(blank);
 
-  rows.push(['Воронка та карантин за benchmark-групами', '', '', '', '', '', '', '', '', '', '']);
+  rows.push(['Воронка та карантин за benchmark-групами', '', '', '', '', '', '', '', '', '']);
   var pairRows = dashboardBenchmarkPairRows_(model.priorities);
   for (var r = 0; r < pairRows.length; r++) rows.push(pairRows[r]);
   return rows;
@@ -1287,12 +1287,12 @@ function dashboardBenchmarkPairRows_(priorities) {
     var right = i + 1 < priorities.length ? dashboardBenchmarkBlockRows_(priorities[i + 1]) : [];
     var count = Math.max(left.length, right.length);
     for (var r = 0; r < count; r++) {
-      var row = ['', '', '', '', '', '', '', '', '', '', ''];
+      var row = ['', '', '', '', '', '', '', '', '', ''];
       copyDashboardCells_(row, 0, left[r] || ['', '', '', '', '']);
-      copyDashboardCells_(row, 6, right[r] || ['', '', '', '', '']);
+      copyDashboardCells_(row, 5, right[r] || ['', '', '', '', '']);
       rows.push(row);
     }
-    rows.push(['', '', '', '', '', '', '', '', '', '', '']);
+    rows.push(['', '', '', '', '', '', '', '', '', '']);
   }
   return rows;
 }
@@ -1301,10 +1301,10 @@ function dashboardBenchmarkPairRows_(priorities) {
 function dashboardBenchmarkBlockRows_(priority) {
   var rows = [];
   rows.push([dashboardDisplayPriorityName_(priority.name), '', '', '', '']);
-  rows.push(['Воронка', 'Товарів', 'Покази', 'Кліки', 'Витрати']);
+  rows.push(['Воронка', 'Товарів', 'Витрати', 'Конверсії', 'CPC']);
   for (var i = 0; i < priority.stages.length; i++) {
     var stage = priority.stages[i];
-    rows.push([stage.name, stage.products, stage.impressions, stage.clicks, stage.cost]);
+    rows.push([stage.name, stage.products, stage.cost, stage.conversions, stage.clicks ? stage.cost / stage.clicks : 0]);
   }
   rows.push(['Карантин', 'Статус', 'Товарів', 'Витрати', 'Частка']);
   rows.push(['Усього в карантині', '', priority.quarantine.active, priority.quarantine.cost, priority.total.products ? priority.quarantine.active / priority.total.products : 0]);
@@ -1396,7 +1396,7 @@ function finalizeDashboardAgg_(agg) {
 
 function dashboardBenchmarkSummaryRow_(priority, totalProducts) {
   var agg = priority.total;
-  return [dashboardDisplayPriorityName_(priority.name), agg.products, agg.impressions, agg.clicks, agg.conversions, agg.value, agg.cost, agg.roas, agg.cpa, totalProducts ? agg.products / totalProducts : 0, ''];
+  return [dashboardDisplayPriorityName_(priority.name), agg.products, agg.impressions, agg.clicks, agg.conversions, agg.value, agg.cost, agg.roas, agg.cpa, totalProducts ? agg.products / totalProducts : 0];
 }
 
 
@@ -1584,10 +1584,10 @@ function quarantineReasonCostBreakdown_(id, registryRow, statsByPeriod, prices, 
 function formatDashboardDataSheet_(sheet, rowCount) {
   sheet.setFrozenRows(1);
   sheet.setColumnWidth(1, 170);
-  sheet.setColumnWidths(2, 5, 92);
-  sheet.setColumnWidth(7, 170);
-  sheet.setColumnWidths(8, 4, 92);
-  var area = sheet.getRange(2, 1, rowCount, 11);
+  sheet.setColumnWidths(2, 4, 92);
+  sheet.setColumnWidth(6, 170);
+  sheet.setColumnWidths(7, 4, 92);
+  var area = sheet.getRange(2, 1, rowCount, 10);
   area
     .setWrap(false)
     .setVerticalAlignment('middle')
@@ -1598,7 +1598,7 @@ function formatDashboardDataSheet_(sheet, rowCount) {
     .setBorder(false, false, false, false, false, false)
     .setNumberFormat('General');
   sheet.getRange(2, 1, rowCount, 1).setNumberFormat('@');
-  var values = sheet.getRange(2, 1, rowCount, 11).getValues();
+  var values = sheet.getRange(2, 1, rowCount, 10).getValues();
   var sectionColor = '#2f5597';
   var headerColor = '#4a86e8';
   var fillColor = '#eef4ff';
@@ -1608,16 +1608,20 @@ function formatDashboardDataSheet_(sheet, rowCount) {
     var row = i + 2;
     var leftAValue = values[i][0];
     var leftBValue = values[i][1];
+    var rightFValue = values[i][5];
     var rightGValue = values[i][6];
-    var rightHValue = values[i][7];
+    var nextLeftAValue = i + 1 < values.length ? values[i + 1][0] : '';
+    var nextRightFValue = i + 1 < values.length ? values[i + 1][5] : '';
     var leftA = String(leftAValue === null || leftAValue === undefined ? '' : leftAValue);
     var leftB = String(leftBValue === null || leftBValue === undefined ? '' : leftBValue);
+    var rightF = String(rightFValue === null || rightFValue === undefined ? '' : rightFValue);
     var rightG = String(rightGValue === null || rightGValue === undefined ? '' : rightGValue);
-    var rightH = String(rightHValue === null || rightHValue === undefined ? '' : rightHValue);
+    var nextLeftA = String(nextLeftAValue === null || nextLeftAValue === undefined ? '' : nextLeftAValue);
+    var nextRightF = String(nextRightFValue === null || nextRightFValue === undefined ? '' : nextRightFValue);
     var hasLeftA = leftA !== '';
     var hasLeftB = leftB !== '';
+    var hasRightF = rightF !== '';
     var hasRightG = rightG !== '';
-    var hasRightH = rightH !== '';
     if (leftA === 'Зведення benchmark-груп') {
       sheet.getRange(row, 1, 1, 10)
         .setBackground(sectionColor)
@@ -1628,7 +1632,7 @@ function formatDashboardDataSheet_(sheet, rowCount) {
       continue;
     }
     if (leftA === 'Воронка та карантин за benchmark-групами') {
-      sheet.getRange(row, 1, 1, 11)
+      sheet.getRange(row, 1, 1, 10)
         .setBackground(sectionColor)
         .setFontColor('#ffffff')
         .setFontWeight('bold')
@@ -1657,10 +1661,10 @@ function formatDashboardDataSheet_(sheet, rowCount) {
     } else if (inSummary && (hasLeftA || hasLeftB)) {
       sheet.getRange(row, 1, 1, 10).setBackground(fillColor);
     }
-    if (!inSummary && (hasRightG || hasRightH)) {
-      sheet.getRange(row, 7, 1, 5).setBackground(fillColor);
+    if (!inSummary && (hasRightF || hasRightG)) {
+      sheet.getRange(row, 6, 1, 5).setBackground(fillColor);
     }
-    if (hasLeftA && !hasLeftB && leftA !== 'Група') {
+    if (hasLeftA && !hasLeftB && nextLeftA === 'Воронка') {
       sheet.getRange(row, 1, 1, 5)
         .setBackground(sectionColor)
         .setFontColor('#ffffff')
@@ -1668,8 +1672,8 @@ function formatDashboardDataSheet_(sheet, rowCount) {
         .setHorizontalAlignment('left')
         .setBorder(true, null, null, null, null, null, borderColor, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
     }
-    if (hasRightG && !hasRightH) {
-      sheet.getRange(row, 7, 1, 5)
+    if (hasRightF && !hasRightG && nextRightF === 'Воронка') {
+      sheet.getRange(row, 6, 1, 5)
         .setBackground(sectionColor)
         .setFontColor('#ffffff')
         .setFontWeight('bold')
@@ -1683,25 +1687,30 @@ function formatDashboardDataSheet_(sheet, rowCount) {
         .setFontWeight('bold')
         .setHorizontalAlignment('center');
     }
-    if (rightG === 'Воронка' || rightG === 'Карантин') {
-      sheet.getRange(row, 7, 1, 5)
+    if (rightF === 'Воронка' || rightF === 'Карантин') {
+      sheet.getRange(row, 6, 1, 5)
         .setBackground(headerColor)
         .setFontColor('#ffffff')
         .setFontWeight('bold')
         .setHorizontalAlignment('center');
     }
-    if (leftA === 'Воронка') sheet.getRange(row + 1, 5, 6, 1).setNumberFormat('"UAH" #,##0.00');
-    if (rightG === 'Воронка') sheet.getRange(row + 1, 11, 6, 1).setNumberFormat('"UAH" #,##0.00');
+    if (leftA === 'Воронка') {
+      sheet.getRange(row + 1, 3, 6, 1).setNumberFormat('"UAH" #,##0.00');
+      sheet.getRange(row + 1, 5, 6, 1).setNumberFormat('"UAH" #,##0.00');
+    }
+    if (rightF === 'Воронка') {
+      sheet.getRange(row + 1, 8, 6, 1).setNumberFormat('"UAH" #,##0.00');
+      sheet.getRange(row + 1, 10, 6, 1).setNumberFormat('"UAH" #,##0.00');
+    }
     if (leftA === 'Карантин') {
       sheet.getRange(row + 1, 4, 5, 1).setNumberFormat('"UAH" #,##0.00');
       sheet.getRange(row + 1, 5, 5, 1).setNumberFormat('0.0%');
     }
-    if (rightG === 'Карантин') {
-      sheet.getRange(row + 1, 10, 5, 1).setNumberFormat('"UAH" #,##0.00');
-      sheet.getRange(row + 1, 11, 5, 1).setNumberFormat('0.0%');
+    if (rightF === 'Карантин') {
+      sheet.getRange(row + 1, 9, 5, 1).setNumberFormat('"UAH" #,##0.00');
+      sheet.getRange(row + 1, 10, 5, 1).setNumberFormat('0.0%');
     }
   }
-  sheet.getRange(4, 6, Math.max(1, rowCount - 2), 1).setBackground('#ffffff');
 }
 
 
@@ -2624,7 +2633,7 @@ function compactManagedSheetGrids_(sheets, settings) {
   ensureSheetColumns_(sheets.productTypes, 19);
   ensureSheetColumns_(sheets.productDiagnostics, 15);
   ensureSheetColumns_(sheets.dashboard, 7);
-  ensureSheetColumns_(sheets.dashboardData, 11);
+  ensureSheetColumns_(sheets.dashboardData, 10);
   ensureSheetColumns_(sheets.quarantineRegistry, 8);
   ensureSheetColumns_(sheets.quarantineLog, 4);
   ensureSheetColumns_(sheets.runState, 2);
