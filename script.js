@@ -17,7 +17,7 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-20';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-21';
 var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-13';
 
 
@@ -250,19 +250,34 @@ function ensureSettingsTemplate_(sheet) {
     ['external_product_type_override', 'FALSE', 'TRUE дозволяє зовнішньому джерелу замінювати product_type з Merchant. FALSE заповнює тільки порожні значення.'],
 
 
-    ['[Funnel and quarantine rules]', '', ''],
+    ['[Funnel]', '', ''],
     ['funnel_period_days', '14', 'Період аналізу для етапів воронки в днях.'],
     ['funnel_exclude_last_days', '0', 'Скільки останніх днів виключити зі статистики воронки. 0 відповідає 14-денному вікну V1.'],
-    ['no_sales_click_threshold', '60', 'Правило карантину NO_SALES: поріг кліків за відсутності конверсій.'],
-    ['no_sales_period_days', '30', 'Період аналізу для правила NO_SALES у днях.'],
-    ['spend_over_margin_share', '0.35', 'Правило SPEND_OVER_MARGIN: поріг витрат відносно ціни товару.'],
-    ['spend_over_margin_period_days', '30', 'Період аналізу для правила SPEND_OVER_MARGIN у днях.'],
-    ['expensive_click_cpc_threshold', '3', 'Правило EXPENSIVE_CLICK: поріг середньої ціни кліку.'],
-    ['expensive_click_period_days', '30', 'Період аналізу для правила EXPENSIVE_CLICK у днях.'],
+
+
+    ['[Quarantine module]', '', ''],
     ['quarantine_days', '14', 'Скільки днів товар залишається виключеним після нового спрацювання карантину.'],
     ['quarantine_registry_max_rows', '50000', 'М’який ліміт рядків QuarantineRegistry. Старі неактивні записи видаляються, активні карантини не обрізаються.'],
     ['quarantine_log_max_rows', '20000', 'Максимальна кількість рядків історії у QuarantineLog. Старі рядки видаляються.'],
     ['quarantine_keep_expired_days', '30', 'Скільки днів зберігати неактивні записи карантину після завершення active_until.'],
+
+
+    ['[Quarantine: clicks without sales]', '', ''],
+    ['enable_no_sales_quarantine', 'TRUE', 'TRUE вмикає правило карантину для товарів з кліками без конверсій.'],
+    ['no_sales_click_threshold', '60', 'Правило карантину NO_SALES: поріг кліків за відсутності конверсій.'],
+    ['no_sales_period_days', '30', 'Період аналізу для правила NO_SALES у днях.'],
+
+
+    ['[Quarantine: spend over price share]', '', ''],
+    ['enable_spend_over_margin_quarantine', 'TRUE', 'TRUE вмикає правило карантину для товарів, де витрати перевищили частку ціни.'],
+    ['spend_over_margin_share', '0.35', 'Правило SPEND_OVER_MARGIN: поріг витрат відносно ціни товару.'],
+    ['spend_over_margin_period_days', '30', 'Період аналізу для правила SPEND_OVER_MARGIN у днях.'],
+
+
+    ['[Quarantine: expensive click]', '', ''],
+    ['enable_expensive_click_quarantine', 'TRUE', 'TRUE вмикає правило карантину для товарів із дорогою середньою ціною кліку.'],
+    ['expensive_click_cpc_threshold', '3', 'Правило EXPENSIVE_CLICK: поріг середньої ціни кліку.'],
+    ['expensive_click_period_days', '30', 'Період аналізу для правила EXPENSIVE_CLICK у днях.'],
 
 
     ['[Service]', '', ''],
@@ -355,6 +370,9 @@ function isBooleanSettingKey_(key) {
     enable_product_type_filter: true,
     enable_funnel_builder: true,
     enable_quarantine: true,
+    enable_no_sales_quarantine: true,
+    enable_spend_over_margin_quarantine: true,
+    enable_expensive_click_quarantine: true,
     enable_product_diagnostics: true,
     enable_dashboard_data: true,
     enable_dashboard: true,
@@ -457,6 +475,9 @@ function readSettings_(sheet) {
     enableProductTypeFilter: bool_(raw.enable_product_type_filter, true),
     enableFunnelBuilder: bool_(raw.enable_funnel_builder, true),
     enableQuarantine: bool_(raw.enable_quarantine, true),
+    enableNoSalesQuarantine: bool_(raw.enable_no_sales_quarantine, true),
+    enableSpendOverMarginQuarantine: bool_(raw.enable_spend_over_margin_quarantine, true),
+    enableExpensiveClickQuarantine: bool_(raw.enable_expensive_click_quarantine, true),
     enableProductsWrite: bool_(raw.enable_products_write, true),
     enableProductDiagnostics: bool_(raw.enable_product_diagnostics, false),
     enableDashboardData: bool_(raw.enable_dashboard_data, false),
@@ -793,9 +814,15 @@ function stageQuarantineUpdate_(ctx) {
   var periods = statsPeriods_(ctx.settings);
 
 
-  applyNoSales_(registry, stats.no_sales, ctx.settings.noSalesClickThreshold, release, today, logRows);
-  applySpend_(registry, stats.spend_over_margin, prices, ctx.settings.spendOverMarginShare, release, today, logRows);
-  applyExpensiveClick_(registry, stats.expensive_click, ctx.settings.expensiveClickCpcThreshold, release, today, logRows);
+  if (ctx.settings.enableNoSalesQuarantine) {
+    applyNoSales_(registry, stats.no_sales, ctx.settings.noSalesClickThreshold, release, today, logRows);
+  }
+  if (ctx.settings.enableSpendOverMarginQuarantine) {
+    applySpend_(registry, stats.spend_over_margin, prices, ctx.settings.spendOverMarginShare, release, today, logRows);
+  }
+  if (ctx.settings.enableExpensiveClickQuarantine) {
+    applyExpensiveClick_(registry, stats.expensive_click, ctx.settings.expensiveClickCpcThreshold, release, today, logRows);
+  }
 
 
   for (var id in registry) {
@@ -1198,7 +1225,7 @@ function dashboardModel_(ctx, diagRows, state) {
   }
 
   var statsByPeriod = readStatsByPeriod_(ctx.sheets.adsStatsSnapshot);
-  var quarantine = dashboardQuarantineModel_(ctx.sheets.quarantineRegistry, statsByPeriod);
+  var quarantine = dashboardQuarantineModel_(ctx.sheets.quarantineRegistry, statsByPeriod, ctx.settings);
   var topProductTypes = [];
   for (var pathKey in productTypes) topProductTypes.push(finalizeDashboardAgg_(productTypes[pathKey]));
   topProductTypes.sort(function(a, b) { return b.cost - a.cost; });
@@ -1211,7 +1238,6 @@ function dashboardModel_(ctx, diagRows, state) {
     impressionSplit: [finalizeDashboardAgg_(highImpressions), finalizeDashboardAgg_(lowImpressions)],
     stages: dashboardStageAggs_(stages),
     quarantine: quarantine,
-    quarantinePeriodDays: Math.max(ctx.settings.noSalesPeriodDays, ctx.settings.spendOverMarginPeriodDays, ctx.settings.expensiveClickPeriodDays),
     topProductTypes: topProductTypes,
     excludedCount: excludedCount,
     quarantineCount: quarantineCount,
@@ -1256,11 +1282,11 @@ function dashboardDataRows_(model) {
   rows.push(blank);
   rows.push(['quarantine', 'item', 'products', 'status', '', '', '', '', '', '', '']);
   rows.push(['quarantine', 'Усього в карантині', model.quarantine.active, '', '', '', '', '', '', '', '']);
-  rows.push(['quarantine', 'Кліки без продажів', model.quarantine.noSales, 'увімкнено', '', '', '', '', '', '', '']);
-  rows.push(['quarantine', 'Витрати > % ціни', model.quarantine.spend, 'увімкнено', '', '', '', '', '', '', '']);
-  rows.push(['quarantine', 'Дорогий клік', model.quarantine.expensiveClick, 'увімкнено', '', '', '', '', '', '', '']);
+  rows.push(['quarantine', 'Кліки без продажів', model.quarantine.noSales, dashboardEnabledStatus_(model.quarantine.noSalesEnabled), '', '', '', '', '', '', '']);
+  rows.push(['quarantine', 'Витрати > % ціни', model.quarantine.spend, dashboardEnabledStatus_(model.quarantine.spendEnabled), '', '', '', '', '', '', '']);
+  rows.push(['quarantine', 'Дорогий клік', model.quarantine.expensiveClick, dashboardEnabledStatus_(model.quarantine.expensiveClickEnabled), '', '', '', '', '', '', '']);
   rows.push(['quarantine', 'Нові сьогодні', model.quarantine.newToday, '', '', '', '', '', '', '', '']);
-  rows.push(['quarantine', 'Витрати карантину', '', String(model.quarantinePeriodDays) + ' днів', '', '', '', model.quarantine.activeCost, '', '', '']);
+  rows.push(['quarantine', 'Витрати карантину', '', '', '', '', '', model.quarantine.activeCost, '', '', '']);
   rows.push(blank);
   rows.push(['product_type_cost', 'item', 'products', 'impressions', 'clicks', 'conversions', 'conversion_value', 'cost', 'roas', 'cpa', 'share']);
   for (var j = 0; j < model.topProductTypes.length; j++) rows.push(dashboardDataAggRow_('product_type_cost', model.topProductTypes[j], model.total.products));
@@ -1276,11 +1302,11 @@ function dashboardRows_(model) {
   while (rows.length < 22) rows.push(dashboardWideRow_(''));
   rows.push(['Загалом', 'за останні 14 днів', 'Карантин', 'Статус', 'Значення', 'Етап', 'Витрати']);
   rows.push(['Товарів', model.total.products, 'Усього в карантині', '', model.quarantine.active, model.stages[0].name, model.stages[0].cost]);
-  rows.push(['Витрати', model.total.cost, 'Кліки без продажів', 'увімкнено', model.quarantine.noSales, model.stages[1].name, model.stages[1].cost]);
-  rows.push(['Конверсії', model.total.conversions, 'Витрати > % ціни', 'увімкнено', model.quarantine.spend, model.stages[2].name, model.stages[2].cost]);
-  rows.push(['CPA', model.total.cpa, 'Дорогий клік', 'увімкнено', model.quarantine.expensiveClick, model.stages[3].name, model.stages[3].cost]);
+  rows.push(['Витрати', model.total.cost, 'Кліки без продажів', dashboardEnabledStatus_(model.quarantine.noSalesEnabled), model.quarantine.noSales, model.stages[1].name, model.stages[1].cost]);
+  rows.push(['Конверсії', model.total.conversions, 'Витрати > % ціни', dashboardEnabledStatus_(model.quarantine.spendEnabled), model.quarantine.spend, model.stages[2].name, model.stages[2].cost]);
+  rows.push(['CPA', model.total.cpa, 'Дорогий клік', dashboardEnabledStatus_(model.quarantine.expensiveClickEnabled), model.quarantine.expensiveClick, model.stages[3].name, model.stages[3].cost]);
   rows.push(['ROAS', model.total.roas, 'Нові сьогодні', '', model.quarantine.newToday, model.stages[4].name, model.stages[4].cost]);
-  rows.push(['Цінність конв.', model.total.value, 'Витрати карантину', String(model.quarantinePeriodDays) + ' днів', model.quarantine.activeCost, model.stages[5].name, model.stages[5].cost]);
+  rows.push(['Цінність конв.', model.total.value, 'Витрати карантину', '', model.quarantine.activeCost, model.stages[5].name, model.stages[5].cost]);
   return rows;
 }
 
@@ -1359,10 +1385,22 @@ function dashboardStageAggs_(stages) {
 }
 
 
-function dashboardQuarantineModel_(sheet, statsByPeriod) {
+function dashboardQuarantineModel_(sheet, statsByPeriod, settings) {
   var today = dateOnly_(new Date());
   var registry = readQuarantineRegistry_(sheet);
-  var out = { active: 0, noSales: 0, spend: 0, expensiveClick: 0, newToday: 0, activeCost: 0 };
+  settings = settings || {};
+  var masterEnabled = settings.enableQuarantine !== false;
+  var out = {
+    active: 0,
+    noSales: 0,
+    spend: 0,
+    expensiveClick: 0,
+    newToday: 0,
+    activeCost: 0,
+    noSalesEnabled: masterEnabled && settings.enableNoSalesQuarantine !== false,
+    spendEnabled: masterEnabled && settings.enableSpendOverMarginQuarantine !== false,
+    expensiveClickEnabled: masterEnabled && settings.enableExpensiveClickQuarantine !== false
+  };
   for (var id in registry) {
     var r = registry[id];
     if (isActiveDate_(r.active_until, today)) {
@@ -1375,6 +1413,11 @@ function dashboardQuarantineModel_(sheet, statsByPeriod) {
     if (isActiveDate_(r.expensive_click_until, today)) out.expensiveClick++;
   }
   return out;
+}
+
+
+function dashboardEnabledStatus_(enabled) {
+  return enabled ? 'увімкнено' : 'вимкнено';
 }
 
 
