@@ -17,7 +17,7 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-21';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-22';
 var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-13';
 
 
@@ -1225,7 +1225,8 @@ function dashboardModel_(ctx, diagRows, state) {
   }
 
   var statsByPeriod = readStatsByPeriod_(ctx.sheets.adsStatsSnapshot);
-  var quarantine = dashboardQuarantineModel_(ctx.sheets.quarantineRegistry, statsByPeriod, ctx.settings);
+  var prices = readMerchantPriceMap_(ctx.sheets.merchantSnapshot);
+  var quarantine = dashboardQuarantineModel_(ctx.sheets.quarantineRegistry, statsByPeriod, prices, ctx.settings);
   var topProductTypes = [];
   for (var pathKey in productTypes) topProductTypes.push(finalizeDashboardAgg_(productTypes[pathKey]));
   topProductTypes.sort(function(a, b) { return b.cost - a.cost; });
@@ -1385,7 +1386,7 @@ function dashboardStageAggs_(stages) {
 }
 
 
-function dashboardQuarantineModel_(sheet, statsByPeriod, settings) {
+function dashboardQuarantineModel_(sheet, statsByPeriod, prices, settings) {
   var today = dateOnly_(new Date());
   var registry = readQuarantineRegistry_(sheet);
   settings = settings || {};
@@ -1405,7 +1406,7 @@ function dashboardQuarantineModel_(sheet, statsByPeriod, settings) {
     var r = registry[id];
     if (isActiveDate_(r.active_until, today)) {
       out.active++;
-      out.activeCost += quarantineStatsCost_(id, statsByPeriod);
+      out.activeCost += quarantineReasonCost_(id, r, statsByPeriod, prices, settings, today);
     }
     if (String(r.last_added || '').substring(0, 10) === today) out.newToday++;
     if (isActiveDate_(r.no_sales_until, today)) out.noSales++;
@@ -1421,14 +1422,34 @@ function dashboardEnabledStatus_(enabled) {
 }
 
 
-function quarantineStatsCost_(id, statsByPeriod) {
+function quarantineReasonCost_(id, registryRow, statsByPeriod, prices, settings, today) {
   statsByPeriod = statsByPeriod || {};
-  var periods = ['no_sales', 'spend_over_margin', 'expensive_click'];
-  for (var i = 0; i < periods.length; i++) {
-    var row = statsByPeriod[periods[i]] && statsByPeriod[periods[i]][id];
-    if (row) return num_(row.cost, 0);
+  prices = prices || {};
+  settings = settings || {};
+  var candidates = [];
+  var noSales = statsByPeriod.no_sales && statsByPeriod.no_sales[id];
+  if (noSales && isActiveDate_(registryRow.no_sales_until, today)) {
+    var noSalesClicks = Math.max(0, num_(noSales.clicks, 0));
+    var noSalesCpc = noSalesClicks > 0 ? num_(noSales.cost, 0) / noSalesClicks : 0;
+    candidates.push(Math.min(noSalesClicks, Math.max(0, num_(settings.noSalesClickThreshold, 0))) * noSalesCpc);
   }
-  return 0;
+  var spend = statsByPeriod.spend_over_margin && statsByPeriod.spend_over_margin[id];
+  if (spend && isActiveDate_(registryRow.spend_until, today)) {
+    var price = Math.max(0, num_(prices[id], 0));
+    var threshold = price > 0 ? price * Math.max(0, num_(settings.spendOverMarginShare, 0)) : 0;
+    var spendCost = Math.max(0, num_(spend.cost, 0));
+    candidates.push(threshold > 0 ? Math.min(spendCost, threshold) : spendCost);
+  }
+  var expensive = statsByPeriod.expensive_click && statsByPeriod.expensive_click[id];
+  if (expensive && isActiveDate_(registryRow.expensive_click_until, today)) {
+    var expensiveClicks = Math.max(0, num_(expensive.clicks, 0));
+    candidates.push(expensiveClicks > 0 ? Math.max(0, num_(expensive.cost, 0)) / expensiveClicks : 0);
+  }
+  var out = 0;
+  for (var i = 0; i < candidates.length; i++) {
+    if (candidates[i] > out) out = candidates[i];
+  }
+  return out;
 }
 
 
