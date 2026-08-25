@@ -17,8 +17,8 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-15';
-var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-8';
+var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-16';
+var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-9';
 
 
 var SETTINGS_SHEET = 'Settings';
@@ -1275,9 +1275,8 @@ function dashboardRows_(model) {
   rows.push([model.total.products, model.total.roas, 'Кліки без продажів', 'увімкнено', model.quarantine.noSales, model.stages[1].name, model.stages[1].cost]);
   rows.push(['CPA', 'Конверсії', 'Витрати > % ціни', 'увімкнено', model.quarantine.spend, model.stages[2].name, model.stages[2].cost]);
   rows.push([model.total.cpa, model.total.conversions, 'Дорогий клік', 'увімкнено', model.quarantine.expensiveClick, model.stages[3].name, model.stages[3].cost]);
-  rows.push(['Цінність конв.', 'Витрати', '', '', '', model.stages[4].name, model.stages[4].cost]);
-  rows.push([model.total.value, model.total.cost, 'У карантині у вибірці', '', model.quarantineCount, model.stages[5].name, model.stages[5].cost]);
-  rows.push(['', '', 'Виключено з реклами', '', model.excludedCount, '', '']);
+  rows.push(['Цінність конв.', 'Витрати', 'У вибірці в карантині', '', model.quarantineCount, model.stages[4].name, model.stages[4].cost]);
+  rows.push([model.total.value, model.total.cost, 'Виключено у вибірці', '', model.excludedCount, model.stages[5].name, model.stages[5].cost]);
   return rows;
 }
 
@@ -1412,7 +1411,7 @@ function formatDashboardSheet_(sheet, rowCount) {
     .setWrap(false)
     .setVerticalAlignment('middle')
     .setHorizontalAlignment('center');
-  sheet.getRange(2, 1, rowCount, 7).setBorder(true, true, true, true, true, true, '#b7c9e8', SpreadsheetApp.BorderStyle.SOLID);
+  sheet.getRange(2, 1, rowCount, 7).setBorder(false, false, false, false, false, false);
   sheet.getRange(2, 1, rowCount, 7).setBackground('#ffffff').setFontColor('#000000').setFontWeight('normal');
   sheet.getRange(2, 1, 1, 7).setFontSize(13).setFontWeight('bold');
   var headerTitles = {
@@ -1434,11 +1433,10 @@ function formatDashboardSheet_(sheet, rowCount) {
       sheet.getRange(row, 1, 1, 7).setBackground('#eef4ff');
     }
   }
-  formatDashboardSummaryBlock_(sheet, 22, 1, 8, 2);
-  formatDashboardSummaryBlock_(sheet, 22, 3, 8, 3);
+  formatDashboardSummaryBlock_(sheet, 22, 1, 7, 2);
+  formatDashboardSummaryBlock_(sheet, 22, 3, 7, 3);
   formatDashboardSummaryBlock_(sheet, 22, 6, 7, 2);
-  sheet.getRange(23, 5, 4, 1).setNumberFormat('0');
-  sheet.getRange(28, 5, 2, 1).setNumberFormat('0');
+  sheet.getRange(23, 5, 6, 1).setNumberFormat('0');
   sheet.getRange(23, 7, 6, 1).setNumberFormat('"UAH" #,##0.00');
   sheet.getRange(28, 1, 1, 1).setNumberFormat('"UAH" #,##0.00');
   sheet.getRange(28, 2, 1, 1).setNumberFormat('"UAH" #,##0.00');
@@ -1456,7 +1454,7 @@ function formatDashboardSummaryBlock_(sheet, startRow, startCol, numRows, numCol
     .setFontWeight('normal')
     .setHorizontalAlignment('center')
     .setVerticalAlignment('middle')
-    .setBorder(true, true, true, true, true, true, '#000000', SpreadsheetApp.BorderStyle.SOLID);
+    .setBorder(true, true, true, true, false, false, '#000000', SpreadsheetApp.BorderStyle.SOLID);
   sheet.getRange(startRow, startCol, 1, numCols)
     .setBackground('#4a86e8')
     .setFontColor('#ffffff')
