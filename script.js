@@ -17,7 +17,7 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-25-dashboard-refresh-control-36';
+var SCRIPT_BUILD = '2026-08-26-waterfall-recovery-1';
 var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-26';
 
 
@@ -484,6 +484,8 @@ function readSettings_(sheet) {
     enableDashboard: bool_(raw.enable_dashboard, false),
     enablePreviousStateRead: bool_(raw.enable_previous_state_read, true),
     enableManagedSheetFormatting: bool_(raw.enable_managed_sheet_formatting, false),
+    manualForceRestartPipeline: bool_(raw.force_restart_pipeline, false),
+    testForceRestartPipeline: testMode && testForceRestart,
     forceRestartPipeline: bool_(raw.force_restart_pipeline, false) || (testMode && testForceRestart)
   };
 }
@@ -523,10 +525,20 @@ function startRun_(ss, sheets, settings, existingRunId) {
   var state = readState_(sheets.runState);
   var now = new Date();
   var runId = existingRunId || Utilities.formatDate(now, tz_(), 'yyyyMMdd-HHmmss') + '-' + Math.floor(Math.random() * 100000);
+  var shouldResetPipeline = settings.forceRestartPipeline || !state.stage || state.stage === 'COMPLETE';
 
 
-  if (settings.forceRestartPipeline || !state.stage || state.stage === 'COMPLETE') {
+  if (settings.manualForceRestartPipeline && forceRestartAlreadyConsumed_(state)) {
+    shouldResetPipeline = settings.testForceRestartPipeline;
+    consumeManualForceRestartSetting_(sheets, settings, runId, 'force_restart_pipeline was already applied in a previous launch; keeping saved checkpoint and resetting setting to FALSE.');
+  }
+
+
+  if (shouldResetPipeline) {
     state = resetPipelineState_(sheets, settings);
+    if (settings.manualForceRestartPipeline) {
+      consumeManualForceRestartSetting_(sheets, settings, runId, 'force_restart_pipeline was applied once and reset to FALSE.');
+    }
   }
 
 
@@ -1213,6 +1225,44 @@ function ensureDashboardRefreshControl_(sheet, label, checked) {
 }
 
 
+function setSettingValue_(sheet, key, value) {
+  if (!sheet || sheet.getLastRow() < 2) return false;
+  var keys = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < keys.length; i++) {
+    if (String(keys[i][0] || '').trim() === key) {
+      sheet.getRange(i + 2, 2).setValue(value);
+      return true;
+    }
+  }
+  return false;
+}
+
+
+function forceRestartAlreadyConsumed_(state) {
+  if (!state || !state.force_restart_seen_at) return false;
+  var stage = String(state.stage || '');
+  if (!stage || stage === 'COMPLETE') return false;
+  return num_(state.merchant_rows_written, 0) > 0
+    || String(state.merchant_next_page_token || '') !== ''
+    || num_(state.ads_period_index, 0) > 0
+    || num_(state.products_offset, 0) > 0
+    || num_(state.publish_rows_written, 0) > 0;
+}
+
+
+function consumeManualForceRestartSetting_(sheets, settings, runId, message) {
+  try {
+    if (setSettingValue_(sheets.settings, 'force_restart_pipeline', false)) {
+      settings.manualForceRestartPipeline = false;
+      settings.forceRestartPipeline = settings.testForceRestartPipeline;
+      appendRunLog_(sheets.runLog, runId, 'STARTUP', 'FORCE_RESTART_CONSUMED', message);
+    }
+  } catch (settingErr) {
+    appendRunLog_(sheets.runLog, runId, 'STARTUP', 'FORCE_RESTART_RESET_FAILED', 'force_restart_pipeline reset to FALSE failed: ' + String(settingErr));
+  }
+}
+
+
 function dashboardModel_(ctx, diagRows, state) {
   var total = emptyDashboardAgg_('Загалом');
   var sales = emptyDashboardAgg_('продажі');
@@ -1834,13 +1884,19 @@ function addDashboardPieChart_(sheet, posRow, posCol, title, dataRow, labelCol, 
 
 function finishRun_(ctx, status, message) {
   if (!ctx) return;
+  var pipelineIsComplete = false;
+  try {
+    pipelineIsComplete = readState_(ctx.sheets.runState).stage === 'COMPLETE';
+  } catch (stateReadErr) {
+    Logger.log('RunState finish read skipped: ' + String(stateReadErr));
+  }
   var state = {
     stage_status: status,
     heartbeat_at: iso_(new Date()),
     lock_until: '',
     last_run_finished_at: iso_(new Date())
   };
-  if (status === 'DONE' && readState_(ctx.sheets.runState).stage === 'COMPLETE') {
+  if (status === 'DONE' && pipelineIsComplete) {
     state.pipeline_status = 'COMPLETE';
   } else if (status === 'PARTIAL') {
     state.pipeline_status = 'PARTIAL';
@@ -1907,9 +1963,20 @@ function resetPipelineState_(sheets, settings) {
     merchant_rows_written: 0,
     ads_period_index: 0,
     ads_period_keys: '',
+    ads_last_period: '',
     products_offset: 0,
+    products_total: 0,
     products_draft_rows: 0,
     publish_rows_written: 0,
+    publish_total: 0,
+    merchant_snapshot_truncated_at: '',
+    products_write_skipped_at: '',
+    last_successful_publish_at: '',
+    last_completed_stage: '',
+    last_run_finished_at: '',
+    last_error_at: '',
+    last_error_message: '',
+    lock_until: '',
     force_restart_seen_at: settings.forceRestartPipeline ? iso_(new Date()) : ''
   };
   setStateValues_(sheets.runState, state);
