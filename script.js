@@ -17,7 +17,7 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-26-waterfall-recovery-2';
+var SCRIPT_BUILD = '2026-08-26-waterfall-recovery-3';
 var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-26';
 
 
@@ -2908,7 +2908,27 @@ function shouldStopSoon_(settings) {
 
 function isLockExpired_(lockUntil) {
   if (!lockUntil) return true;
-  return new Date(lockUntil).getTime() < new Date().getTime();
+  var lockDate = parseLocalIsoDate_(lockUntil);
+  if (!lockDate || isNaN(lockDate.getTime())) return true;
+  return lockDate.getTime() < new Date().getTime();
+}
+
+
+function parseLocalIsoDate_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]') return value;
+  var text = String(value || '').trim();
+  var m = text.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/);
+  if (m) {
+    return new Date(
+      Number(m[1]),
+      Number(m[2]) - 1,
+      Number(m[3]),
+      Number(m[4]),
+      Number(m[5]),
+      Number(m[6])
+    );
+  }
+  return new Date(text);
 }
 
 
