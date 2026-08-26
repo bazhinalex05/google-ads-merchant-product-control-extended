@@ -17,7 +17,7 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-26-waterfall-recovery-3';
+var SCRIPT_BUILD = '2026-08-26-waterfall-recovery-4';
 var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-26';
 
 
@@ -935,11 +935,15 @@ function stagePublishProducts_(ctx) {
   var publicRows = Math.max(0, ctx.sheets.products.getLastRow() - 1);
   var publishWorkRows = Math.max(0, ctx.sheets.productsPublish.getLastRow() - 1);
   logProgress_(ctx, 'PUBLISH_PRODUCTS', 'CHECKPOINT', 'Publish state read. Written=' + written + ', publicRows=' + publicRows + ', workRows=' + publishWorkRows);
-  if (publicRows === draftRows && publishWorkRows === 0 && productsSheetLooksPublished_(ctx.sheets.products, ctx.sheets.productsDraft, draftRows, cols)) {
+  if (publicRows === draftRows && productsSheetLooksPublished_(ctx.sheets.products, ctx.sheets.productsDraft, draftRows, cols)) {
     ctx.sheets.products = ctx.ss.getSheetByName(PRODUCTS_SHEET);
     ensureProductsFirst_(ctx.ss, ctx.sheets.products);
     try {
-      setStateValues_(ctx.sheets.runState, { last_successful_publish_at: iso_(new Date()) });
+      setStateValues_(ctx.sheets.runState, {
+        publish_rows_written: draftRows,
+        publish_total: draftRows,
+        last_successful_publish_at: iso_(new Date())
+      });
     } catch (stateErr) {
       Logger.log('Publish recovery state update skipped: ' + String(stateErr));
     }
