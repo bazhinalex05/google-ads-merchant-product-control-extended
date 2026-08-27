@@ -17,7 +17,7 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-27-publish-integrity-1';
+var SCRIPT_BUILD = '2026-08-27-publish-integrity-2';
 var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-26';
 
 
@@ -1125,8 +1125,10 @@ function stageDashboard_(ctx) {
   var state = readState_(ctx.sheets.runState);
   var expectedRows = num_(state.products_draft_rows, 0) || num_(state.products_total, 0);
   var productCols = ctx.settings.benchmarkOutputAttribute ? 5 : 4;
+  var draftRows = ctx.sheets.productsDraft ? Math.max(0, ctx.sheets.productsDraft.getLastRow() - 1) : 0;
+  var canCompareDraft = draftRows === expectedRows;
   if (ctx.settings.enableProductsWrite) {
-    assertPublishedProductsComplete_(ctx, expectedRows, productCols, true);
+    assertPublishedProductsComplete_(ctx, expectedRows, productCols, canCompareDraft);
   }
   if (!ctx.settings.enableDashboardData && !ctx.settings.enableDashboard) {
     advanceStage_(ctx, 'COMPLETE');
