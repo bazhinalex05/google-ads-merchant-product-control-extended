@@ -17,7 +17,7 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-26-waterfall-recovery-4';
+var SCRIPT_BUILD = '2026-08-27-publish-integrity-1';
 var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-26';
 
 
@@ -975,6 +975,9 @@ function stagePublishProducts_(ctx) {
   if (Math.max(0, ctx.sheets.productsPublish.getLastRow() - 1) !== draftRows) {
     throw new Error('ProductsPublish_Work row count does not match draft after copy.');
   }
+  if (!productsSheetLooksPublished_(ctx.sheets.productsPublish, ctx.sheets.productsDraft, draftRows, cols)) {
+    throw new Error('ProductsPublish_Work verification failed after copy.');
+  }
 
 
   if (ctx.settings.testMode) {
@@ -986,6 +989,7 @@ function stagePublishProducts_(ctx) {
 
   logProgress_(ctx, 'PUBLISH_PRODUCTS', 'CHECKPOINT', 'Publish work copied. Swapping Products sheet. Rows=' + written);
   swapPublishedProductsSheet_(ctx);
+  assertPublishedProductsComplete_(ctx, draftRows, cols, true);
   Logger.log('[PUBLISH_PRODUCTS] Products sheet swapped. Updating final publish state.');
   try {
     ctx.sheets.products = ctx.ss.getSheetByName(PRODUCTS_SHEET);
@@ -1050,6 +1054,23 @@ function productsSheetLooksPublished_(productsSheet, draftSheet, rowCount, colCo
 }
 
 
+function assertPublishedProductsComplete_(ctx, expectedRows, colCount, compareDraft) {
+  var products = ctx.ss.getSheetByName(PRODUCTS_SHEET);
+  if (!products) throw new Error('Published Products sheet is missing.');
+  ctx.sheets.products = products;
+  var actualRows = Math.max(0, products.getLastRow() - 1);
+  if (actualRows !== expectedRows) {
+    throw new Error('Published Products row count ' + actualRows + ' does not match expected ' + expectedRows + '.');
+  }
+  if (products.getLastColumn() < colCount) {
+    throw new Error('Published Products column count ' + products.getLastColumn() + ' is less than expected ' + colCount + '.');
+  }
+  if (compareDraft !== false && !productsSheetLooksPublished_(products, ctx.sheets.productsDraft, expectedRows, colCount)) {
+    throw new Error('Published Products verification failed against ProductsDraft_Work.');
+  }
+}
+
+
 function sameRowValues_(a, b) {
   if (!a || !b || a.length !== b.length) return false;
   for (var i = 0; i < a.length; i++) {
@@ -1069,6 +1090,7 @@ function swapPublishedProductsSheet_(ctx) {
   publish.setName(PRODUCTS_SHEET);
   safeShowSheet_(publish);
   ctx.sheets.products = publish;
+  ctx.sheets.productsPublish = null;
   ss.setActiveSheet(publish);
   ss.moveActiveSheet(1);
   if (oldProducts) ss.deleteSheet(oldProducts);
@@ -1100,9 +1122,22 @@ function stageProductDiagnostics_(ctx) {
 
 
 function stageDashboard_(ctx) {
+  var state = readState_(ctx.sheets.runState);
+  var expectedRows = num_(state.products_draft_rows, 0) || num_(state.products_total, 0);
+  var productCols = ctx.settings.benchmarkOutputAttribute ? 5 : 4;
+  if (ctx.settings.enableProductsWrite) {
+    assertPublishedProductsComplete_(ctx, expectedRows, productCols, true);
+  }
   if (!ctx.settings.enableDashboardData && !ctx.settings.enableDashboard) {
     advanceStage_(ctx, 'COMPLETE');
     return { status: 'DONE', message: 'Dashboard skipped by settings.' };
+  }
+  Logger.log('[DASHBOARD_BUILD] SCRIPT_BUILD=' + SCRIPT_BUILD);
+  var dashboardModel = buildDashboardData_(ctx);
+  buildDashboard_(ctx, dashboardModel);
+  cleanupTransientWorkSheets_(ctx);
+  if (ctx.settings.enableProductsWrite) {
+    assertPublishedProductsComplete_(ctx, expectedRows, productCols, false);
   }
   setStateValues_(ctx.sheets.runState, {
     pipeline_status: 'COMPLETE',
@@ -1112,10 +1147,6 @@ function stageDashboard_(ctx) {
     heartbeat_at: iso_(new Date()),
     lock_until: ''
   });
-  Logger.log('[DASHBOARD_BUILD] SCRIPT_BUILD=' + SCRIPT_BUILD);
-  var dashboardModel = buildDashboardData_(ctx);
-  buildDashboard_(ctx, dashboardModel);
-  cleanupTransientWorkSheets_(ctx);
   return { status: 'DONE', message: 'Dashboard built.' };
 }
 
@@ -2716,7 +2747,7 @@ function compactManagedSheetGrids_(sheets, settings) {
   var productOutputCols = settings.benchmarkOutputAttribute ? 5 : 4;
   ensureSheetColumns_(sheets.products, productOutputCols);
   ensureSheetColumns_(sheets.productsDraft, productOutputCols);
-  ensureSheetColumns_(sheets.productsPublish, productOutputCols);
+  if (!isProductsSheet_(sheets.productsPublish)) ensureSheetColumns_(sheets.productsPublish, productOutputCols);
   ensureSheetColumns_(sheets.settings, 3);
   ensureSheetColumns_(sheets.productTypes, 19);
   ensureSheetColumns_(sheets.productDiagnostics, 15);
@@ -2745,9 +2776,22 @@ function cleanupTransientWorkSheets_(ctx) {
 
 function clearManagedWorkSheet_(sheet, requiredCols) {
   if (!sheet) return;
+  if (isProductsSheet_(sheet)) {
+    Logger.log('Skipping transient cleanup for public Products sheet.');
+    return;
+  }
   clearBelowHeader_(sheet);
   ensureSheetColumns_(sheet, requiredCols);
   ensureSheetRows_(sheet, 1);
+}
+
+
+function isProductsSheet_(sheet) {
+  try {
+    return !!sheet && sheet.getName && sheet.getName() === PRODUCTS_SHEET;
+  } catch (e) {
+    return false;
+  }
 }
 
 
