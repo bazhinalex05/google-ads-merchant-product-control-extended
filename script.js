@@ -17,7 +17,7 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-27-publish-integrity-2';
+var SCRIPT_BUILD = '2026-08-27-lock-recovery-1';
 var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-26';
 
 
@@ -556,7 +556,7 @@ function startRun_(ss, sheets, settings, existingRunId) {
   }
 
 
-  if (state.stage_status === 'RUNNING' && !isLockExpired_(state.lock_until)) {
+  if (state.stage_status === 'RUNNING' && !isLockExpired_(state.lock_until, state.lock_until_ms)) {
     appendRunLog_(sheets.runLog, runId, state.stage, 'SKIPPED_LOCKED', 'Previous run still owns lock until ' + state.lock_until);
     return {
       ss: ss,
@@ -569,7 +569,7 @@ function startRun_(ss, sheets, settings, existingRunId) {
   }
 
 
-  if (state.stage_status === 'RUNNING' && isLockExpired_(state.lock_until)) {
+  if (state.stage_status === 'RUNNING' && isLockExpired_(state.lock_until, state.lock_until_ms)) {
     appendRunLog_(sheets.runLog, runId, state.stage, 'RECOVERED_STALE_RUN', 'Previous run did not finish before lock_until=' + state.lock_until);
   }
 
@@ -583,6 +583,7 @@ function startRun_(ss, sheets, settings, existingRunId) {
     run_started_at: iso_(now),
     heartbeat_at: iso_(now),
     lock_until: iso_(new Date(now.getTime() + settings.runLockMinutes * 60000)),
+    lock_until_ms: lockUntilMs_(now, settings),
     last_error_at: '',
     last_error_message: ''
   });
@@ -634,6 +635,7 @@ function failStartupRun_(startup, err) {
     startup_status: 'FAILED',
     heartbeat_at: iso_(new Date()),
     lock_until: '',
+    lock_until_ms: '',
     last_error_at: iso_(new Date()),
     last_error_message: msg
   });
@@ -662,6 +664,7 @@ function startNextStageInSameRun_(ctx, stage) {
     stage_status: 'RUNNING',
     heartbeat_at: iso_(now),
     lock_until: iso_(new Date(now.getTime() + ctx.settings.runLockMinutes * 60000)),
+    lock_until_ms: lockUntilMs_(now, ctx.settings),
     last_error_at: '',
     last_error_message: ''
   });
@@ -1147,7 +1150,8 @@ function stageDashboard_(ctx) {
     stage_status: 'DONE',
     last_completed_stage: ctx.stage,
     heartbeat_at: iso_(new Date()),
-    lock_until: ''
+    lock_until: '',
+    lock_until_ms: ''
   });
   return { status: 'DONE', message: 'Dashboard built.' };
 }
@@ -1935,6 +1939,7 @@ function addDashboardPieChart_(sheet, posRow, posCol, title, dataRow, labelCol, 
 
 function finishRun_(ctx, status, message) {
   if (!ctx) return;
+  if (ctx.stage === 'LOCKED') return;
   var pipelineIsComplete = false;
   try {
     pipelineIsComplete = readState_(ctx.sheets.runState).stage === 'COMPLETE';
@@ -1945,6 +1950,7 @@ function finishRun_(ctx, status, message) {
     stage_status: status,
     heartbeat_at: iso_(new Date()),
     lock_until: '',
+    lock_until_ms: '',
     last_run_finished_at: iso_(new Date())
   };
   if (status === 'DONE' && pipelineIsComplete) {
@@ -1981,6 +1987,7 @@ function failRun_(ctx, err) {
       stage_status: 'FAILED',
       heartbeat_at: iso_(new Date()),
       lock_until: '',
+      lock_until_ms: '',
       last_error_at: iso_(new Date()),
       last_error_message: msg
     });
@@ -2028,6 +2035,7 @@ function resetPipelineState_(sheets, settings) {
     last_error_at: '',
     last_error_message: '',
     lock_until: '',
+    lock_until_ms: '',
     force_restart_seen_at: settings.forceRestartPipeline ? iso_(new Date()) : ''
   };
   setStateValues_(sheets.runState, state);
@@ -2041,13 +2049,19 @@ function advanceStage_(ctx, nextStage) {
     stage_status: 'READY',
     last_completed_stage: ctx.stage,
     heartbeat_at: iso_(new Date()),
-    lock_until: ''
+    lock_until: '',
+    lock_until_ms: ''
   });
 }
 
 
 function heartbeat_(ctx, key1, value1, key2, value2) {
-  var update = { heartbeat_at: iso_(new Date()), lock_until: iso_(new Date(new Date().getTime() + ctx.settings.runLockMinutes * 60000)) };
+  var now = new Date();
+  var update = {
+    heartbeat_at: iso_(now),
+    lock_until: iso_(new Date(now.getTime() + ctx.settings.runLockMinutes * 60000)),
+    lock_until_ms: lockUntilMs_(now, ctx.settings)
+  };
   if (key1) update[key1] = value1;
   if (key2) update[key2] = value2;
   setStateValues_(ctx.sheets.runState, update);
@@ -2956,7 +2970,9 @@ function shouldStopSoon_(settings) {
 }
 
 
-function isLockExpired_(lockUntil) {
+function isLockExpired_(lockUntil, lockUntilMs) {
+  var lockMs = num_(lockUntilMs, 0);
+  if (lockMs > 0) return lockMs < new Date().getTime();
   if (!lockUntil) return true;
   var lockDate = parseLocalIsoDate_(lockUntil);
   if (!lockDate || isNaN(lockDate.getTime())) return true;
@@ -2969,16 +2985,42 @@ function parseLocalIsoDate_(value) {
   var text = String(value || '').trim();
   var m = text.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/);
   if (m) {
-    return new Date(
-      Number(m[1]),
-      Number(m[2]) - 1,
-      Number(m[3]),
-      Number(m[4]),
-      Number(m[5]),
-      Number(m[6])
-    );
+    return localPartsToDate_(m);
   }
   return new Date(text);
+}
+
+
+function localPartsToDate_(match) {
+  var offsetMinutes = timezoneOffsetMinutes_();
+  var utc = Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4]),
+    Number(match[5]),
+    Number(match[6])
+  );
+  return new Date(utc - offsetMinutes * 60000);
+}
+
+
+function timezoneOffsetMinutes_() {
+  var offset = '+0000';
+  try {
+    offset = Utilities.formatDate(new Date(), tz_(), 'Z');
+  } catch (e) {
+    offset = '+0000';
+  }
+  var m = String(offset || '+0000').match(/^([+-])(\d{2})(\d{2})$/);
+  if (!m) return 0;
+  var minutes = Number(m[2]) * 60 + Number(m[3]);
+  return m[1] === '-' ? -minutes : minutes;
+}
+
+
+function lockUntilMs_(fromDate, settings) {
+  return fromDate.getTime() + Math.max(1, num_(settings && settings.runLockMinutes, 40)) * 60000;
 }
 
 
