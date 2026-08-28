@@ -17,7 +17,7 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-27-lock-recovery-1';
+var SCRIPT_BUILD = '2026-08-28-lock-state-migration-1';
 var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-26';
 
 
@@ -71,6 +71,42 @@ var STAGES = [
   'PRODUCT_DIAGNOSTICS_BUILD',
   'DASHBOARD_BUILD',
   'COMPLETE'
+];
+
+var RUN_STATE_KEYS = [
+  'pipeline_date',
+  'pipeline_status',
+  'startup_status',
+  'stage',
+  'stage_status',
+  'current_run_id',
+  'run_started_at',
+  'heartbeat_at',
+  'lock_until',
+  'lock_until_ms',
+  'last_error_at',
+  'last_error_message',
+  'last_run_finished_at',
+  'last_completed_stage',
+  'merchant_rows_written',
+  'merchant_next_page_token',
+  'merchant_page_in_run',
+  'merchant_has_next_token',
+  'merchant_snapshot_truncated_at',
+  'ads_stats_periods_done',
+  'ads_period_index',
+  'ads_period_keys',
+  'ads_last_period',
+  'products_offset',
+  'products_total',
+  'products_draft_rows',
+  'products_write_skipped_at',
+  'publish_total',
+  'publish_rows_written',
+  'last_successful_publish_at',
+  'force_restart_seen_at',
+  'force_restart_consumed_at',
+  'force_restart_consumed_run_id'
 ];
 
 
@@ -537,6 +573,7 @@ function fillBlankSettingValue_(sheet, key, value) {
 
 function startRun_(ss, sheets, settings, existingRunId) {
   var state = readState_(sheets.runState);
+  state = normalizeRunStateLock_(sheets.runState, state);
   var now = new Date();
   var runId = existingRunId || Utilities.formatDate(now, tz_(), 'yyyyMMdd-HHmmss') + '-' + Math.floor(Math.random() * 100000);
   var shouldResetPipeline = settings.forceRestartPipeline || !state.stage || state.stage === 'COMPLETE';
@@ -557,7 +594,7 @@ function startRun_(ss, sheets, settings, existingRunId) {
 
 
   if (state.stage_status === 'RUNNING' && !isLockExpired_(state.lock_until, state.lock_until_ms)) {
-    appendRunLog_(sheets.runLog, runId, state.stage, 'SKIPPED_LOCKED', 'Previous run still owns lock until ' + state.lock_until);
+    appendRunLog_(sheets.runLog, runId, state.stage, 'SKIPPED_LOCKED', 'Previous run still owns lock until ' + state.lock_until + ' / ' + state.lock_until_ms);
     return {
       ss: ss,
       sheets: sheets,
@@ -570,7 +607,7 @@ function startRun_(ss, sheets, settings, existingRunId) {
 
 
   if (state.stage_status === 'RUNNING' && isLockExpired_(state.lock_until, state.lock_until_ms)) {
-    appendRunLog_(sheets.runLog, runId, state.stage, 'RECOVERED_STALE_RUN', 'Previous run did not finish before lock_until=' + state.lock_until);
+    appendRunLog_(sheets.runLog, runId, state.stage, 'RECOVERED_STALE_RUN', 'Previous run did not finish before lock_until=' + state.lock_until + ' / ' + state.lock_until_ms);
   }
 
 
@@ -2735,6 +2772,36 @@ function readMerchantPriceMap_(sheet) {
 function ensureRunStateHeader_(sheet) {
   sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), 1), 2).setNumberFormat('@');
   if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, 2).setValues([['key', 'value']]);
+  ensureRunStateKeys_(sheet);
+}
+
+
+function ensureRunStateKeys_(sheet) {
+  var lastRow = Math.max(1, sheet.getLastRow());
+  var data = sheet.getRange(1, 1, lastRow, 2).getValues();
+  var values = {};
+  var oldKeys = [];
+  for (var i = 1; i < data.length; i++) {
+    var key = String(data[i][0] || '').trim();
+    if (!key) continue;
+    if (!values.hasOwnProperty(key)) oldKeys.push(key);
+    values[key] = data[i][1];
+  }
+  var out = [['key', 'value']];
+  var ordered = {};
+  for (var j = 0; j < RUN_STATE_KEYS.length; j++) {
+    var stateKey = RUN_STATE_KEYS[j];
+    out.push([stateKey, values.hasOwnProperty(stateKey) ? values[stateKey] : '']);
+    ordered[stateKey] = true;
+  }
+  for (var k = 0; k < oldKeys.length; k++) {
+    if (!ordered[oldKeys[k]]) out.push([oldKeys[k], values[oldKeys[k]]]);
+  }
+  while (out.length < lastRow) {
+    out.push(['', '']);
+  }
+  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), out.length), 2).setNumberFormat('@');
+  sheet.getRange(1, 1, out.length, 2).setValues(out);
 }
 
 
@@ -2840,6 +2907,19 @@ function readState_(sheet) {
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
   for (var i = 0; i < data.length; i++) if (data[i][0]) out[String(data[i][0])] = data[i][1];
   return out;
+}
+
+
+function normalizeRunStateLock_(sheet, state) {
+  state = state || {};
+  if (num_(state.lock_until_ms, 0) > 0 || !state.lock_until) return state;
+  var lockDate = parseLocalIsoDate_(state.lock_until);
+  if (!lockDate || isNaN(lockDate.getTime())) return state;
+  state.lock_until_ms = String(lockDate.getTime());
+  setStateValues_(sheet, {
+    lock_until_ms: state.lock_until_ms
+  });
+  return state;
 }
 
 
