@@ -17,7 +17,7 @@
 
 
 var SPREADSHEET_URL = 'PASTE_SPREADSHEET_URL_HERE';
-var SCRIPT_BUILD = '2026-08-28-lock-state-migration-1';
+var SCRIPT_BUILD = '2026-09-01-product-types-checkbox-preserve-1';
 var DASHBOARD_LAYOUT_BUILD = '2026-08-25-dashboard-charts-26';
 
 
@@ -805,7 +805,7 @@ function stageProductTypesBuild_(ctx) {
     applyExternalProductTypeFeed_(ctx);
   }
   var preserved = ctx.settings.enablePreviousStateRead ? readProductTypeState_(ctx.sheets.productTypes) : {};
-  var hasEnabled = hasEnabledProductType_(preserved);
+  var hasPreservedState = hasProductTypeState_(preserved);
   var paths = collectProductTypes_(ctx.sheets.merchantSnapshot);
   var statsByPath = buildProductTypeStats_(ctx.sheets.merchantSnapshot, ctx.sheets.adsStatsSnapshot);
   var rows = [[
@@ -817,7 +817,7 @@ function stageProductTypesBuild_(ctx) {
     var path = paths[i];
     var displayParts = sparseProductTypeDisplayParts_(path);
     var saved = preserved[path] || {};
-    var enabled = hasEnabled && saved.hasOwnProperty('enabled') ? saved.enabled === true : true;
+    var enabled = hasPreservedState ? (saved.hasOwnProperty('enabled') ? saved.enabled === true : false) : true;
     var stats = productTypeOutputStats_(statsByPath[path]);
     rows.push([
       enabled,
@@ -869,9 +869,9 @@ function applyProductTypesCheckboxes_(sheet, rowCount) {
 }
 
 
-function hasEnabledProductType_(preserved) {
+function hasProductTypeState_(preserved) {
   for (var path in preserved) {
-    if (preserved[path] && preserved[path].enabled === true) return true;
+    if (preserved[path]) return true;
   }
   return false;
 }
